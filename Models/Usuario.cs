@@ -34,6 +34,7 @@ public partial class Usuario
     public string? Direccion { get; set; }
 
     public int? IdProvincia { get; set; }
+    public DateOnly? fecha_nac { get; set; }
 
     public virtual ICollection<Alumno> Alumnos { get; set; } = new List<Alumno>();
 
