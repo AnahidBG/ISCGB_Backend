@@ -3,18 +3,16 @@ using AutoGestionAPI.Models; // Ajusta según tu namespace si cambia
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 1. Agregar el DbContext (Asegúrate de cambiar TuDbContext por el nombre real de tu archivo Context)
+
 builder.Services.AddDbContext<TuDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// 2. Habilitar controladores y herramientas de documentación
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(); // <--- Esto genera la documentación para Swagger
 
 var app = builder.Build();
 
-// 3. ACTIVAR SWAGGER VISUAL (Dejalo afuera de cualquier 'if' para que ande siempre local)
 app.UseSwagger();
 app.UseSwaggerUI(c =>
 {
@@ -23,7 +21,6 @@ app.UseSwaggerUI(c =>
 
 // app.UseHttpsRedirection();
 
-// 4. Mapear las rutas de tus controladores (como AuthController)
 app.MapControllers();
 
 // Dejamos el endpoint de clima por defecto por si querés verificar que funcione
