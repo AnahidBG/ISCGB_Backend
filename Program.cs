@@ -11,6 +11,17 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(); // <--- Esto genera la documentación para Swagger
 
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("PermitirAngular", policy =>
+    {
+        // Cambiar por el puerto que corresponda desde angular.
+        policy.WithOrigins("http://localhost:4200") 
+              .AllowAnyHeader()
+              .AllowAnyMethod();
+    });
+});
+
 var app = builder.Build();
 
 app.UseSwagger();
@@ -20,6 +31,8 @@ app.UseSwaggerUI(c =>
 });
 
 // app.UseHttpsRedirection();
+
+app.UseCors("PermitirAngular");
 
 app.MapControllers();
 
