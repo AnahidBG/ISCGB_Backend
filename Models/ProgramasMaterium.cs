@@ -40,6 +40,7 @@ public partial class ProgramasMaterium
     public string? FormatoCurricular { get; set; }
 
     public string? CicloLectivo { get; set; }
+    public string? Fundamentacion { get; set; }
 
     public virtual ICollection<Contenido> Contenidos { get; set; } = new List<Contenido>();
 
