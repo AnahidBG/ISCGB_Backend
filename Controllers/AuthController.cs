@@ -31,7 +31,8 @@ namespace AutoGestionAPI.Controllers
         {
             
             Usuario? usuario = _context.Usuarios
-                      .Include(u => u.UsuariosRoles) 
+                      .Include(u => u.UsuariosRoles)
+                       .ThenInclude(ur => ur.IdRolNavigation)
                       .FirstOrDefault(u => u.Dni == request.Dni);
 
             if (usuario == null || usuario.EstadoUsuario == false)
@@ -49,6 +50,12 @@ namespace AutoGestionAPI.Controllers
 
             var token = GenerarJwtToken(usuario);
 
+            var listaRoles = usuario.UsuariosRoles.Select(ur => new 
+            {
+                IdRol = ur.IdRol,
+                NombreRol = ur.IdRolNavigation?.Rol
+            }).ToList();
+
             return Ok(new { 
                 Token = token,
                 Usuario = usuario.Nombre + " " + usuario.Apellido,
@@ -60,7 +67,8 @@ namespace AutoGestionAPI.Controllers
                 NombreContactoEmergencia = usuario.ContactoEmergencia,
                 Direccion = usuario.Direccion,
                 Email = usuario.Email,
-                IdUsuario = usuario.IdUsuario
+                IdUsuario = usuario.IdUsuario,
+                Roles = listaRoles
 
             });
         }
@@ -94,14 +102,23 @@ namespace AutoGestionAPI.Controllers
             var jwtSettings = _configuration.GetSection("Jwt");
             var key = Encoding.ASCII.GetBytes(jwtSettings["Key"]);
 
-            var claims = new[]
+            
+            var claims = new List<Claim>
             {
                 new Claim(ClaimTypes.NameIdentifier, usuario.IdUsuario.ToString()), 
-                new Claim("DNI", usuario.Dni),
-    
-                
-                new Claim(ClaimTypes.Role, usuario.UsuariosRoles.FirstOrDefault()?.IdRol.ToString() ?? "0")
+                new Claim("DNI", usuario.Dni)
             };
+
+            
+            foreach (var rol in usuario.UsuariosRoles)
+            {
+                // Verificamos que el rol no sea nulo
+                if (!string.IsNullOrEmpty(rol.IdRolNavigation?.Rol))
+                {
+                    
+                    claims.Add(new Claim(ClaimTypes.Role, rol.IdRolNavigation.Rol));
+                }
+            }
 
             var tokenDescriptor = new SecurityTokenDescriptor
             {
