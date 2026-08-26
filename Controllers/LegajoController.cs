@@ -20,7 +20,7 @@ namespace AutoGestionAPI.Controllers
 
         // 1. POST: Subir un documento del legajo
         [HttpPost]
-        public async Task<IActionResult> SubirDocumento([FromForm] SubirLegajoDto dto) // 👈 AQUÍ ESTÁ EL CAMBIO CLAVE
+        public async Task<IActionResult> SubirDocumento([FromForm] SubirLegajoDto dto) 
         {
             // Ahora todo se lee desde el "dto"
             if (dto.Archivo == null || dto.Archivo.Length == 0)
