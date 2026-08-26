@@ -9,7 +9,7 @@ builder.Services.AddDbContext<TuDbContext>(options =>
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(); // <--- Esto genera la documentación para Swagger
+builder.Services.AddSwaggerGen(); 
 
 builder.Services.AddCors(options =>
 {
@@ -33,7 +33,7 @@ app.UseSwaggerUI(c =>
 // app.UseHttpsRedirection();
 
 app.UseCors("PermitirAngular");
-
+app.UseStaticFiles(); 
 app.MapControllers();
 
 // Dejamos el endpoint de clima por defecto por si querés verificar que funcione
