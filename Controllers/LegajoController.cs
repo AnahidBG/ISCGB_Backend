@@ -22,7 +22,7 @@ namespace AutoGestionAPI.Controllers
         [HttpPost]
         public async Task<IActionResult> SubirDocumento([FromForm] SubirLegajoDto dto) 
         {
-            // Ahora todo se lee desde el "dto"
+            
             if (dto.Archivo == null || dto.Archivo.Length == 0)
                 return BadRequest(new { message = "No se ha adjuntado ningún archivo." });
 
