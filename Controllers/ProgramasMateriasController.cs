@@ -10,7 +10,7 @@ namespace AutoGestionAPI.Controllers
     [Route("api/[controller]")]
     public class ProgramasMateriaController : ControllerBase
     {
-        private readonly TuDbContext _context; 
+        private readonly TuDbContext _context;
 
         public ProgramasMateriaController(TuDbContext context)
         {
@@ -49,13 +49,13 @@ namespace AutoGestionAPI.Controllers
                 FormatoCurricular = dto.FormatoCurricular,
                 CicloLectivo = dto.CicloLectivo,
                 Fundamentacion = dto.Fundamentacion,
-                
 
-                Contenidos = dto.Contenidos.Select(c => new Contenido 
+
+                Contenidos = dto.Contenidos.Select(c => new Contenido
                 {
                     Unidad = c.Unidad,
                     TituloUnidad = c.TituloUnidad,
-                    Contenido1 = c.Contenido, 
+                    Contenido1 = c.Contenido,
                     BibliografiaObligatoria = c.BibliografiaObligatoria,
                     BibliografiaComplementaria = c.BibliografiaComplementaria
                 }).ToList()
@@ -65,35 +65,35 @@ namespace AutoGestionAPI.Controllers
             _context.ProgramasMateria.Add(nuevoPrograma);
             await _context.SaveChangesAsync();
 
-            return Ok(new { 
-                message = "Programa y contenidos guardados con éxito.", 
-                idPrograma = nuevoPrograma.IdPrograma 
+            return Ok(new
+            {
+                message = "Programa y contenidos guardados con éxito.",
+                idPrograma = nuevoPrograma.IdPrograma
             });
         }
 
         [HttpGet("{idPrograma}/pdf")]
-public async Task<IActionResult> DescargarPdf(int idPrograma)
-{
+        public async Task<IActionResult> DescargarPdf(int idPrograma)
+        {
 
-var programa = await _context.ProgramasMateria
-    .Include(p => p.Contenidos)
-    // Buscamos la Materia
-    .Include(p => p.IdMateriaNavigation) 
+            var programa = await _context.ProgramasMateria
+                .Include(p => p.Contenidos)
+                .Include(p => p.IdMateriaNavigation)
 
-    .Include(p => p.IdDocenteNavigation)
-        .ThenInclude(d => d.IdUsuarioNavigation)
-    .FirstOrDefaultAsync(p => p.IdPrograma == idPrograma);
+                .Include(p => p.IdDocenteNavigation)
+                    .ThenInclude(d => d.IdUsuarioNavigation)
+                .FirstOrDefaultAsync(p => p.IdPrograma == idPrograma);
 
-    if (programa == null) return NotFound();
-
-
-    var documentoPdf = GeneradorPdfPrograma.CrearDocumento(programa);
-    
-
-    var pdfBytes = documentoPdf.GeneratePdf();
+            if (programa == null) return NotFound();
 
 
-    return File(pdfBytes, "application/pdf", $"Programa_Materia_{programa.IdMateria}.pdf");
-}
+            var documentoPdf = GeneradorPdfPrograma.CrearDocumento(programa);
+
+
+            var pdfBytes = documentoPdf.GeneratePdf();
+
+
+            return File(pdfBytes, "application/pdf", $"Programa_Materia_{programa.IdMateria}.pdf");
+        }
     }
 }

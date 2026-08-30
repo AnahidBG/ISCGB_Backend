@@ -108,31 +108,38 @@ namespace AutoGestionAPI.Controllers
         [HttpGet("usuario/{idUsuario}")]
         public async Task<IActionResult> GetLegajosPorUsuario(int idUsuario)
         {
-            var legajos = await _context.Legajos
-                .Where(l => l.IdUsuario == idUsuario)
-                .Include(l => l.IdTipoDocNavigation)
-                .Include(l => l.IdUsuarioAuditorNavigation)
-                .Select(l => new LegajoDetalleDto
+            var usuario = await _context.Usuarios
+                .Include(u => u.LegajoIdUsuarioNavigations)
+                    .ThenInclude(l => l.IdTipoDocNavigation)
+                .Include(u => u.LegajoIdUsuarioNavigations)
+                    .ThenInclude(l => l.IdUsuarioAuditorNavigation)
+                .FirstOrDefaultAsync(u => u.IdUsuario == idUsuario);
+
+            if (usuario == null)
+                return NotFound(new { message = "No se encontró el usuario." });
+
+            var respuesta = new UsuarioDocumentosDto
+            {
+                NombreCompleto = $"{usuario.Nombre} {usuario.Apellido}".Trim(),
+
+                Documentos = usuario.LegajoIdUsuarioNavigations.Select(l => new LegajoDetalleDto
                 {
                     IdLegajo = l.IdLegajo,
                     IdUsuario = l.IdUsuario,
-                    TipoDocumento = l.IdTipoDocNavigation.NombreDocumento,
-                    RutaArchivo = l.RutaArchivo,
+                    TipoDocumento = l.IdTipoDocNavigation?.NombreDocumento ?? "Documento sin tipo",
+                    RutaArchivo = l.RutaArchivo ?? "",
                     FechaCarga = l.FechaCarga,
                     FechaVencimiento = l.FechaVencimiento,
-                    Estado = l.Estado,
-                    PresentadoFisico = l.PresentadoFisico ?? false,
+                    Estado = l.Estado ?? "Pendiente",
+                    PresentadoFisico = l.PresentadoFisico,
                     Comentario = l.Comentario,
                     Auditor = l.IdUsuarioAuditorNavigation != null
-                        ? l.IdUsuarioAuditorNavigation.Nombre + " " + l.IdUsuarioAuditorNavigation.Apellido
+                        ? $"{l.IdUsuarioAuditorNavigation.Nombre} {l.IdUsuarioAuditorNavigation.Apellido}".Trim()
                         : "Sin auditor asignado"
-                })
-                .ToListAsync();
+                }).ToList()
+            };
 
-            if (legajos.Count == 0)
-                return NotFound(new { message = "No se encontraron documentos para este usuario." });
-
-            return Ok(legajos);
+            return Ok(respuesta);
         }
 
         // Auditar documento (Dirección/Secretaría)
