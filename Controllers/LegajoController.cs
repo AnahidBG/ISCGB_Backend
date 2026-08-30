@@ -37,10 +37,10 @@ namespace AutoGestionAPI.Controllers
             string tipoDocLimpio = LimpiarCadena(tipoDocumento.NombreDocumento);
 
 
-            string timestamp = DateTime.Now.ToString("yyyyMMdd");
+            string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
             string extension = Path.GetExtension(dto.Archivo.FileName).ToLower();
 
-            string nombreArchivoFinal = $"{nombreLimpio}_{tipoDocLimpio}_{timestamp}{extension}";
+            string nombreArchivoFinal = $"ISCGB_{nombreLimpio}_{tipoDocLimpio}_{timestamp}{extension}";
 
 
             string uploadsFolder = Path.Combine(_env.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot"), "uploads", "legajos");
