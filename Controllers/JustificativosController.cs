@@ -12,7 +12,7 @@ namespace AutoGestionAPI.Controllers
     [Route("api/[controller]")]
     public class JustificativosController : ControllerBase
     {
-        private readonly TuDbContext _context; 
+        private readonly TuDbContext _context;
 
         public JustificativosController(TuDbContext context)
         {
@@ -24,7 +24,7 @@ namespace AutoGestionAPI.Controllers
         {
             //Si no es por causas personales, el PDF es obligatorio
             bool esCausaPersonal = dto.TipoInasistencia == "Causas Personales";
-            
+
             if (!esCausaPersonal)
             {
                 if (dto.DocumentoPdf == null || dto.DocumentoPdf.ContentType != "application/pdf")
@@ -43,13 +43,14 @@ namespace AutoGestionAPI.Controllers
             {
                 string nombreOriginal = Path.GetFileNameWithoutExtension(dto.DocumentoPdf.FileName).Replace(" ", "_");
                 string extension = Path.GetExtension(dto.DocumentoPdf.FileName); // Debería ser .pdf
-                
+
                 // Formato: ISCGB_NombreyApellido_NombreDocumento
-                string nombreArchivoFinal = $"ISCGB_{usuario.Nombre}{usuario.Apellido}_Justificativo{extension}";
-                
+                string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                string nombreArchivoFinal = $"ISCGB_{usuario.Nombre}{usuario.Apellido}_Justificativo_{timestamp}{extension}";
+
                 var carpetaDestino = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads", "justificativos");
                 if (!Directory.Exists(carpetaDestino)) Directory.CreateDirectory(carpetaDestino);
-                
+
                 string rutaFisica = Path.Combine(carpetaDestino, nombreArchivoFinal);
 
                 using (var stream = new FileStream(rutaFisica, FileMode.Create))
@@ -67,7 +68,7 @@ namespace AutoGestionAPI.Controllers
                 NotaAdicional = dto.NotaAdicional,
                 FechaCarga = DateTime.Now,
                 RutaArchivo = rutaGuardadoFinal,
-                Estado = "Pendiente", 
+                Estado = "Pendiente",
                 FechaInasistenciaInicio = dto.FechaInasistenciaInicio,
                 FechaInasistenciaFin = dto.FechaInasistenciaFin
             };
@@ -75,9 +76,10 @@ namespace AutoGestionAPI.Controllers
             _context.Justificativos.Add(nuevoJustificativo);
             await _context.SaveChangesAsync();
 
-            
-            return Ok(new { 
-                message = "Recorda llevar el día que te incorporas a tus actividades laborales el certificado de manera física" 
+
+            return Ok(new
+            {
+                message = "Recorda llevar el día que te incorporas a tus actividades laborales el certificado de manera física"
             });
         }
 
@@ -85,9 +87,9 @@ namespace AutoGestionAPI.Controllers
         [HttpPut("auditar/{idJustificativo}")]
         public async Task<IActionResult> AuditarJustificativo(int idJustificativo, [FromBody] AuditarJustificativoDto dto)
         {
-            
+
             var justificativo = await _context.Justificativos.FindAsync(idJustificativo);
-    
+
             if (justificativo == null)
             {
                 return NotFound(new { message = "Justificativo no encontrado" });
@@ -99,18 +101,19 @@ namespace AutoGestionAPI.Controllers
                 return BadRequest(new { message = "El usuario auditor no existe" });
             }
 
-            
+
             justificativo.Estado = dto.Estado;
             justificativo.IdUsuarioAuditor = dto.IdUsuarioAuditor;
-    
+
             // (Consultar) Si es necesario agregar una fecha de auditoría:
             // justificativo.FechaAuditoria = DateTime.Now;
 
-            
+
             _context.Justificativos.Update(justificativo);
             await _context.SaveChangesAsync();
 
-            return Ok(new { 
+            return Ok(new
+            {
                 message = $"Justificativo {dto.Estado.ToLower()} con éxito",
                 estadoActual = justificativo.Estado
             });
