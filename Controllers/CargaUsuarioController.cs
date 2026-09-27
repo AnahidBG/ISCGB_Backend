@@ -22,11 +22,11 @@ namespace AutoGestionAPI.Controllers
         [HttpPost("alta")]
         public async Task<IActionResult> AltaUsuario([FromBody] CargaUsuarioDto dto)
         {
-            // Validación de roles permitidos
+            
             if (dto.IdRol < 1 || dto.IdRol > 4)
                 return BadRequest("Rol inválido. Solo se permite asignar Director, Secretario, Docente o Alumno.");
 
-            // Validación de Director Suplente (Regla de negocio)
+            
             if (dto.IdRol == 3 && dto.EsDirectorSuplente)
             {
                 var existeSuplente = await _context.Docentes
@@ -39,7 +39,7 @@ namespace AutoGestionAPI.Controllers
                 }
             }
 
-            // Armamos el Usuario con los campos de tu base de datos
+            
             var nuevoUsuario = new Usuario
             {
                 Nombre = dto.Nombre,
@@ -55,31 +55,29 @@ namespace AutoGestionAPI.Controllers
                 AfiliacionEmergencia = dto.AfiliacionEmergencia,
                 IdProvincia = dto.IdProvincia,
                 FechaNac = dto.FechaNac,
-                EstadoUsuario = true, // Estado activo por defecto (Alta)
-                PasswordHash = "AsignarContraseñaTemporal" // Falta encriptar un hash real
+                EstadoUsuario = true, 
+                PasswordHash = "AsignarContraseñaTemporal" 
             };
 
-            // Agregamos el Rol a la tabla intermedia
+            
             nuevoUsuario.UsuariosRoles.Add(new UsuariosRole { IdRol = dto.IdRol });
 
-            // Inserción en tablas específicas según el rol
-            if (dto.IdRol == 3) // Docente
+            
+            if (dto.IdRol == 3) 
             {
                 nuevoUsuario.Docentes.Add(new Docente
                 {
                     DirectorSuplente = dto.EsDirectorSuplente
                 });
             }
-            else if (dto.IdRol == 4) // Alumno
+            else if (dto.IdRol == 4) 
             {
-                nuevoUsuario.Alumnos.Add(new Alumno()); // Si la tabla alumno tiene campos obligatorios, agregalos acá
+                nuevoUsuario.Alumnos.Add(new Alumno()); 
             }
 
             _context.Usuarios.Add(nuevoUsuario);
             await _context.SaveChangesAsync();
 
-            // Cumplimos con el Criterio: "Que se autocomplete legajo con DNI"
-            // Retornamos el DNI como el número de legajo autogenerado para que el frontend lo muestre
             return Ok(new 
             { 
                 mensaje = "Usuario creado exitosamente.", 
@@ -97,7 +95,7 @@ namespace AutoGestionAPI.Controllers
 
             if (usuario == null) return NotFound("Usuario no encontrado.");
 
-            // Si es docente y le están asignando la suplencia, validamos que no haya otro
+            
             var docente = usuario.Docentes.FirstOrDefault();
             if (docente != null && dto.EsDirectorSuplente && docente.DirectorSuplente != true)
             {
@@ -115,14 +113,14 @@ namespace AutoGestionAPI.Controllers
                 docente.DirectorSuplente = false;
             }
 
-            // Actualización de datos personales
+            
             usuario.Nombre = dto.Nombre;
             usuario.Apellido = dto.Apellido;
-            // ... (podés mapear el resto de los campos de la misma forma)
+            
 
             await _context.SaveChangesAsync();
 
-            // Criterio exacto de la tarjeta: Mensaje de configuración guardada
+            
             return Ok(new { message = "El perfil del usuario ha sido actualizado correctamente" });
         }
 
@@ -135,10 +133,10 @@ namespace AutoGestionAPI.Controllers
 
             if (usuario == null) return NotFound("Usuario no encontrado.");
 
-            // Criterio: Cambio a inactivo sin borrar documentación
+            
             usuario.EstadoUsuario = false; 
             
-            // Si era director suplente, le liberamos el cargo para que otro pueda asumirlo
+           
             var docente = usuario.Docentes.FirstOrDefault();
             if (docente != null && docente.DirectorSuplente == true)
             {
