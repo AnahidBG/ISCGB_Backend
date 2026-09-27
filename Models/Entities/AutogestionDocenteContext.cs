@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 
-namespace AutoGestionAPI.Models;
+namespace AutoGestionAPI.Models.Entities;
 
 public partial class AutogestionDocenteContext : DbContext
 {
@@ -67,7 +67,7 @@ public partial class AutogestionDocenteContext : DbContext
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
 #warning To protect potentially sensitive information in your connection string, you should move it out of source code. You can avoid scaffolding the connection string by using the Name= syntax to read it from configuration - see https://go.microsoft.com/fwlink/?linkid=2131148. For more guidance on storing connection strings, see https://go.microsoft.com/fwlink/?LinkId=723263.
-        => optionsBuilder.UseSqlServer("Server=.\\SQLEXPRESS;Database=Autogestion_Docente;Trusted_Connection=True;TrustServerCertificate=True;");
+        => optionsBuilder.UseSqlServer("Server=localhost\\SQLEXPRESS;Database=Autogestion_Docente;Trusted_Connection=True;TrustServerCertificate=True;");
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -683,6 +683,7 @@ public partial class AutogestionDocenteContext : DbContext
                 .HasMaxLength(20)
                 .IsUnicode(false)
                 .HasColumnName("genero");
+            entity.Property(e => e.IdPais).HasColumnName("id_pais");
             entity.Property(e => e.IdProvincia).HasColumnName("id_provincia");
             entity.Property(e => e.LugarNacimiento)
                 .HasMaxLength(150)
@@ -708,6 +709,10 @@ public partial class AutogestionDocenteContext : DbContext
                 .HasMaxLength(255)
                 .IsUnicode(false)
                 .HasColumnName("token_recuperacion");
+
+            entity.HasOne(d => d.IdPaisNavigation).WithMany(p => p.Usuarios)
+                .HasForeignKey(d => d.IdPais)
+                .HasConstraintName("FK_Usuarios_Pais");
 
             entity.HasOne(d => d.IdProvinciaNavigation).WithMany(p => p.Usuarios)
                 .HasForeignKey(d => d.IdProvincia)

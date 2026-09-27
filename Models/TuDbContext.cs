@@ -62,6 +62,8 @@ public partial class TuDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        // modelBuilder.Entity<Correlatividade>().Ignore(c => c.Correlativa);
+        // modelBuilder.Entity<Correlatividade>().Ignore(c => c.Materia);
         modelBuilder.Entity<Alumno>(entity =>
         {
             entity.HasKey(e => e.IdAlumno).HasName("PK__Alumnos__6D77A7F1E4A5E7C7");

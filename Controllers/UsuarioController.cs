@@ -35,7 +35,7 @@ namespace AutoGestionAPI.Controllers
                     ContactoEmergencia = u.ContactoEmergencia,
                     Direccion = u.Direccion,
                     IdProvincia = u.IdProvincia,
-                    FechaNac = u.fecha_nac,
+                    FechaNac = u.FechaNac,
                     EstadoUsuario = u.EstadoUsuario,
                     Roles = u.UsuariosRoles.Select(ur => new 
                     {
