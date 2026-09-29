@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace AutoGestionAPI.Models;
+namespace AutoGestionAPI.Models.Entities;
 
 public partial class ProgramasMaterium
 {

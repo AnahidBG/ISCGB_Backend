@@ -1,8 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations.Schema;
 
-namespace AutoGestionAPI.Models;
+namespace AutoGestionAPI.Models.Entities;
 
 public partial class Materia
 {
@@ -15,9 +14,9 @@ public partial class Materia
     public string? Curso { get; set; }
 
     public virtual ICollection<AlumnoMaterium> AlumnoMateria { get; set; } = new List<AlumnoMaterium>();
-    [InverseProperty("Correlativa")]
+
     public virtual ICollection<Correlatividade> CorrelatividadeCorrelativas { get; set; } = new List<Correlatividade>();
-    [InverseProperty("Materia")]
+
     public virtual ICollection<Correlatividade> CorrelatividadeMateria { get; set; } = new List<Correlatividade>();
 
     public virtual ICollection<DocenteMaterium> DocenteMateria { get; set; } = new List<DocenteMaterium>();

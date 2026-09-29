@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations.Schema;
-namespace AutoGestionAPI.Models;
+
+namespace AutoGestionAPI.Models.Entities;
 
 public partial class Usuario
 {
@@ -35,18 +35,21 @@ public partial class Usuario
 
     public int? IdProvincia { get; set; }
 
-[Column("fecha_nac")]
     public DateOnly? FechaNac { get; set; }
 
     public string? Cuil { get; set; }
 
     public string? Genero { get; set; }
-[Column("afiliacion_emergencia")]
+
+    public int? IdPais { get; set; }
+
     public string? AfiliacionEmergencia { get; set; }
 
     public virtual ICollection<Alumno> Alumnos { get; set; } = new List<Alumno>();
 
     public virtual ICollection<Docente> Docentes { get; set; } = new List<Docente>();
+
+    public virtual Pai? IdPaisNavigation { get; set; }
 
     public virtual Provincium? IdProvinciaNavigation { get; set; }
 
