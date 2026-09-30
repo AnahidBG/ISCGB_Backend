@@ -15,12 +15,14 @@ namespace AutoGestionAPI.Services
 
             DateTime fecha = DateTime.Now;
 
+            byte[] logo = ObtenerLogo();
+
             byte[] sello = ObtenerSello();
 
             string mes = ObtenerMes(fecha.Month);
 
             string fechaTexto =
-                $"Se expide la presente en Capital a los {fecha.Day} días del mes de {mes} de {fecha.Year}.";
+                $"Se expide la presente en Córdoba Capital a los {fecha.Day} días del mes de {mes} de {fecha.Year}.";
 
             IDocument documento = Document.Create(container =>
             {
@@ -41,38 +43,40 @@ namespace AutoGestionAPI.Services
                         {
                             col.Spacing(15);
 
+                            // ENCABEZADO (Logo)
+                            col.Item()
+                                .Width(150)
+                                .Image(logo);
+
                             // TÍTULO
                             col.Item()
                                 .AlignCenter()
                                 .Text("CONSTANCIA DE ALUMNO REGULAR")
                                 .Bold()
-                                .FontSize(16);
+                                .FontSize(15);
 
                             // INSTITUTO
-                            col.Item()
-                                .PaddingTop(20)
-                                .Text(
-                                    "La dirección del Instituto Superior Cura Gabriel Brochero");
-
-                            // NOMBRE
                             col.Item()
                                 .PaddingTop(10)
                                 .Text(text =>
                                 {
-                                    text.Span("HACE CONSTAR que: ")
-                                        .Bold();
+                                    text.Span("La dirección del ");
 
-                                    text.Span(nombreCompleto);
+                                    text.Span("Instituto Superior Cura Gabriel Brochero").Bold();
                                 });
 
-                            // DNI
+                            // NOMBRE y DNI
                             col.Item()
+                                .PaddingTop(10)
                                 .Text(text =>
                                 {
-                                    text.Span("Documento: ")
-                                        .Bold();
+                                    text.Span("Hace constar que: ");
 
-                                    text.Span($"D.N.I. {dni}");
+                                    text.Span(nombreCompleto).Bold();
+
+                                    text.Span(" Documento: D.N.I. Nro");
+
+                                    text.Span($" {dni}").Bold();
                                 });
 
                             // CARRERA
@@ -113,7 +117,11 @@ namespace AutoGestionAPI.Services
                                 .Text(
                                     "A pedido del Interesado y al solo efecto de ser presentado.");
 
-                            // FECHA
+                            //FECHA
+                            col.Item()
+                                .Text(fechaTexto);
+
+                            // SELLO
                             col.Item()
                                 .PaddingTop(50)
                                 .Row(row =>
@@ -122,12 +130,6 @@ namespace AutoGestionAPI.Services
                                     .AlignCenter()
                                     .Width(120)
                                     .Image(sello);
-
-                                row.RelativeItem()
-                                    .AlignRight()
-                                    .AlignMiddle()
-                                    .Text("Código de Validación: XXXXX")
-                                    .FontSize(10);
                             });
                         });
                 });
@@ -140,7 +142,7 @@ namespace AutoGestionAPI.Services
         private static byte[] ObtenerSello()
         {
             string rutaSello = Path.Combine(
-            AppContext.BaseDirectory,
+            Directory.GetCurrentDirectory(),
             "wwwroot",
             "images",
             "sello.png");
@@ -177,6 +179,17 @@ namespace AutoGestionAPI.Services
             };
 
             return meses[numeroMes - 1];
+        }
+
+        private static byte[] ObtenerLogo()
+        {
+            string rutaLogo = Path.Combine(
+            Directory.GetCurrentDirectory(),
+            "wwwroot",
+            "images",
+            "logo.JPG"); 
+
+            return File.ReadAllBytes(rutaLogo);
         }
 
 

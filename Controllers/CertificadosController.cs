@@ -8,7 +8,7 @@ namespace AutoGestionAPI.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    [Authorize]
+    //[Authorize]
     public class CertificadosController : ControllerBase
     {
         private readonly TuDbContext _context;
@@ -32,8 +32,11 @@ namespace AutoGestionAPI.Controllers
 
         private IActionResult GenerarCertificado(bool conHorario)
         {
-            string? idUsuarioClaim =
-                User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            /*string? idUsuarioClaim =
+                User.FindFirst(ClaimTypes.NameIdentifier)?.Value;*/
+
+                string? idUsuarioClaim = "6";
+                //POINER ID
 
             if (string.IsNullOrEmpty(idUsuarioClaim))
             {
@@ -65,13 +68,13 @@ namespace AutoGestionAPI.Controllers
             Alumno? alumno = _context.Alumnos
                 .FirstOrDefault(a => a.IdUsuario == idUsuario);
 
-            if (alumno == null)
+            /*if (alumno == null)
             {
                 return NotFound(new
                 {
                     message = "El usuario no corresponde a un alumno."
                 });
-            }
+            }*/
 
             if (string.IsNullOrWhiteSpace(usuario.Nombre) ||
                 string.IsNullOrWhiteSpace(usuario.Apellido) ||
