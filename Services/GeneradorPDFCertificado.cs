@@ -38,15 +38,15 @@ namespace AutoGestionAPI.Services
                         text.FontSize(12)
                             .FontFamily(Fonts.Arial));
 
+                    page.Header().Column(col =>
+                        {
+                            col.Item().Width(150).Image(logo);
+
+                        });
                     page.Content()
                         .Column(col =>
                         {
                             col.Spacing(15);
-
-                            // ENCABEZADO (Logo)
-                            col.Item()
-                                .Width(150)
-                                .Image(logo);
 
                             // TÍTULO
                             col.Item()
@@ -130,7 +130,7 @@ namespace AutoGestionAPI.Services
                                     .AlignCenter()
                                     .Width(120)
                                     .Image(sello);
-                            });
+                                });
                         });
                 });
             });
@@ -187,7 +187,7 @@ namespace AutoGestionAPI.Services
             Directory.GetCurrentDirectory(),
             "wwwroot",
             "images",
-            "logo.JPG"); 
+            "logo.JPG");
 
             return File.ReadAllBytes(rutaLogo);
         }
