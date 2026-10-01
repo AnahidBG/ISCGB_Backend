@@ -95,5 +95,38 @@ namespace AutoGestionAPI.Controllers
 
             return File(pdfBytes, "application/pdf", $"Programa_Materia_{programa.IdMateria}.pdf");
         }
+
+        [HttpGet("contexto-docente/{idUsuario}")]
+        public async Task<IActionResult> ObtenerContextoDocente(int idUsuario)
+        {
+            var docente = await _context.Docentes
+                .FirstOrDefaultAsync(d => d.IdUsuario == idUsuario);
+
+            if (docente == null)
+            {
+                return NotFound(new { message = "El usuario especificado no existe o no tiene un perfil de docente." });
+            }
+
+            // Usamos la tabla DocenteMaterias y mapeamos el IdComision
+            List<MateriaDocenteDto> materiasAsignadas = await _context.DocenteMateria
+                .Where(dm => dm.IdDocente == docente.IdDocente)
+                .Select(dm => new MateriaDocenteDto
+                {
+                    IdMateria = dm.IdMateriaNavigation.IdMateria,
+                    Nombre = dm.IdMateriaNavigation.Nombre,
+                    Carrera = dm.IdMateriaNavigation.Carrera,
+                    Curso = dm.IdMateriaNavigation.Curso,
+                    NroOrden = dm.IdMateriaNavigation.NroOrden,
+                    Formato = dm.IdMateriaNavigation.Formato,
+                    HorasCatedra = dm.IdMateriaNavigation.HorasCatedra,
+                    HorasTotales = dm.IdMateriaNavigation.HorasTotales,
+
+                    // Mapeo directo del nuevo campo
+                    IdComision = dm.IdComision
+                })
+                .ToListAsync();
+
+            return Ok(materiasAsignadas);
+        }
     }
 }
