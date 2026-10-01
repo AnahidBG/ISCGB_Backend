@@ -5,7 +5,7 @@ using System.Security.Claims;
 using System.Text;
 using BCrypt.Net;
 using AutoGestionAPI.DTOs;
-using  AutoGestionAPI.Models;
+using AutoGestionAPI.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace AutoGestionAPI.Controllers
@@ -14,7 +14,7 @@ namespace AutoGestionAPI.Controllers
     [Route("api/[controller]")]
     public class AuthController : ControllerBase
     {
-        private readonly TuDbContext _context; 
+        private readonly TuDbContext _context;
         private readonly IConfiguration _configuration;
 
         public AuthController(TuDbContext context, IConfiguration configuration)
@@ -22,14 +22,14 @@ namespace AutoGestionAPI.Controllers
             _context = context;
             _configuration = configuration;
         }
-        
+
 
         //Función del login
 
         [HttpPost("login")]
         public IActionResult Login([FromBody] LoginRequestDto request)
         {
-            
+
             Usuario? usuario = _context.Usuarios
                       .Include(u => u.UsuariosRoles)
                        .ThenInclude(ur => ur.IdRolNavigation)
@@ -40,9 +40,14 @@ namespace AutoGestionAPI.Controllers
                 return Unauthorized(new { message = "DNI no encontrado o cuenta inactiva." });
             }
 
+            if (usuario.PasswordHash == "PENDIENTE_CONFIGURACION")
+            {
+                return Unauthorized(new { message = "Debe configurar su contraseña por primera vez usando el enlace enviado a su correo electrónico." });
+            }
+
             // Verificamos la contraseña encriptada (password_hash)
             bool isPasswordValid = BCrypt.Net.BCrypt.Verify(request.Password, usuario.PasswordHash);
-            
+
             if (!isPasswordValid)
             {
                 return Unauthorized(new { message = "Contraseña incorrecta." });
@@ -50,13 +55,14 @@ namespace AutoGestionAPI.Controllers
 
             var token = GenerarJwtToken(usuario);
 
-            var listaRoles = usuario.UsuariosRoles.Select(ur => new 
+            var listaRoles = usuario.UsuariosRoles.Select(ur => new
             {
                 IdRol = ur.IdRol,
                 NombreRol = ur.IdRolNavigation?.Rol
             }).ToList();
 
-            return Ok(new { 
+            return Ok(new
+            {
                 Token = token,
                 Usuario = usuario.Nombre + " " + usuario.Apellido,
                 Estado_usuario = usuario.EstadoUsuario,
@@ -78,17 +84,17 @@ namespace AutoGestionAPI.Controllers
         [HttpPost("crear-usuario-prueba")]
         public IActionResult CrearUsuarioPrueba([FromBody] LoginRequestDto request)
         {
-            Usuario nuevoUsuario = new Usuario 
+            Usuario nuevoUsuario = new Usuario
             {
                 Dni = request.Dni,
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password), 
-                Email = "prueba@test.com", 
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
+                Email = "prueba@test.com",
                 EstadoUsuario = true,
-               UsuariosRoles = new List<UsuariosRole> 
-                { 
-                    new UsuariosRole { IdRol = 1 } 
+                UsuariosRoles = new List<UsuariosRole>
+                {
+                    new UsuariosRole { IdRol = 1 }
                 }
-                
+
             };
 
             _context.Usuarios.Add(nuevoUsuario);
@@ -102,20 +108,20 @@ namespace AutoGestionAPI.Controllers
             var jwtSettings = _configuration.GetSection("Jwt");
             var key = Encoding.ASCII.GetBytes(jwtSettings["Key"]);
 
-            
+
             var claims = new List<Claim>
             {
-                new Claim(ClaimTypes.NameIdentifier, usuario.IdUsuario.ToString()), 
+                new Claim(ClaimTypes.NameIdentifier, usuario.IdUsuario.ToString()),
                 new Claim("DNI", usuario.Dni)
             };
 
-            
+
             foreach (var rol in usuario.UsuariosRoles)
             {
                 // Verificamos que el rol no sea nulo
                 if (!string.IsNullOrEmpty(rol.IdRolNavigation?.Rol))
                 {
-                    
+
                     claims.Add(new Claim(ClaimTypes.Role, rol.IdRolNavigation.Rol));
                 }
             }

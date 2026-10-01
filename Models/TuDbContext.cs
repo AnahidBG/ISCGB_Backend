@@ -64,6 +64,44 @@ public partial class TuDbContext : DbContext
     {
         // modelBuilder.Entity<Correlatividade>().Ignore(c => c.Correlativa);
         // modelBuilder.Entity<Correlatividade>().Ignore(c => c.Materia);
+        base.OnModelCreating(modelBuilder);
+
+        modelBuilder.Entity<TiposDocumento>().HasData(
+        new TiposDocumento { IdTipoDoc = 1, NombreDocumento = "DNI" },
+        new TiposDocumento { IdTipoDoc = 2, NombreDocumento = "Curriculum Vitae" },
+        new TiposDocumento { IdTipoDoc = 3, NombreDocumento = "Titulo Profesional" },
+        new TiposDocumento { IdTipoDoc = 4, NombreDocumento = "DDJJ Incompatibilidad Horaria" },
+        new TiposDocumento { IdTipoDoc = 5, NombreDocumento = "Apto Medico" },
+        new TiposDocumento { IdTipoDoc = 6, NombreDocumento = "Apto Psicologico" },
+        new TiposDocumento { IdTipoDoc = 7, NombreDocumento = "Antecedentes Penales" },
+        new TiposDocumento { IdTipoDoc = 8, NombreDocumento = "Ley 9680" },
+        new TiposDocumento { IdTipoDoc = 9, NombreDocumento = "Certificado De Domicilio" }
+    );
+        modelBuilder.Entity<RolesTiposDocumento>().HasData(
+    // Documentos para el Rol 3
+    new RolesTiposDocumento { IdRolesTiposDocumentos = 1, IdRol = 3, IdTipoDoc = 1, Obligatorio = false }, // DNI
+    new RolesTiposDocumento { IdRolesTiposDocumentos = 2, IdRol = 3, IdTipoDoc = 2, Obligatorio = false }, // Curriculum
+    new RolesTiposDocumento { IdRolesTiposDocumentos = 3, IdRol = 3, IdTipoDoc = 3, Obligatorio = false }, // Titulo
+    new RolesTiposDocumento { IdRolesTiposDocumentos = 4, IdRol = 3, IdTipoDoc = 4, Obligatorio = true },  // DDJJ
+    new RolesTiposDocumento { IdRolesTiposDocumentos = 5, IdRol = 3, IdTipoDoc = 5, Obligatorio = true },  // Apto Medico
+    new RolesTiposDocumento { IdRolesTiposDocumentos = 6, IdRol = 3, IdTipoDoc = 6, Obligatorio = true },  // Apto Psicologico
+    new RolesTiposDocumento { IdRolesTiposDocumentos = 7, IdRol = 3, IdTipoDoc = 7, Obligatorio = false }, // Antecedentes
+    new RolesTiposDocumento { IdRolesTiposDocumentos = 8, IdRol = 3, IdTipoDoc = 8, Obligatorio = true },  // Ley 9680
+    new RolesTiposDocumento { IdRolesTiposDocumentos = 9, IdRol = 3, IdTipoDoc = 9, Obligatorio = true },  // Certificado Domicilio
+
+    // Documentos para el Rol 4
+    new RolesTiposDocumento { IdRolesTiposDocumentos = 10, IdRol = 4, IdTipoDoc = 1, Obligatorio = false }, // DNI
+    new RolesTiposDocumento { IdRolesTiposDocumentos = 11, IdRol = 4, IdTipoDoc = 5, Obligatorio = true },  // Apto Medico
+    new RolesTiposDocumento { IdRolesTiposDocumentos = 12, IdRol = 4, IdTipoDoc = 7, Obligatorio = false }, // Antecedentes
+    new RolesTiposDocumento { IdRolesTiposDocumentos = 13, IdRol = 4, IdTipoDoc = 10, Obligatorio = false },
+    new RolesTiposDocumento { IdRolesTiposDocumentos = 14, IdRol = 4, IdTipoDoc = 11, Obligatorio = false }
+);
+        modelBuilder.Entity<Role>().HasData(
+        new Role { IdRol = 5, Rol = "Director" }, // Cambiá 'NombreRol' por el nombre de tu propiedad (ej. Nombre, Descripcion, o Rol)
+        new Role { IdRol = 4, Rol = "Secretario" },
+        new Role { IdRol = 2, Rol = "Docente" },
+        new Role { IdRol = 3, Rol = "Alumno" }
+        );
         modelBuilder.Entity<Alumno>(entity =>
         {
             entity.HasKey(e => e.IdAlumno).HasName("PK__Alumnos__6D77A7F1E4A5E7C7");
