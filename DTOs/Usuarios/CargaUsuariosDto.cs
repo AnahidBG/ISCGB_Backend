@@ -11,7 +11,7 @@ namespace AutoGestionAPI.DTOs.Usuarios
         public string Genero { get; set; } = null!;
         public string Direccion { get; set; } = null!;
         public string Telefono { get; set; } = null!;
-        public int IdProvincia { get; set; } 
+        public int? IdProvincia { get; set; }
         public DateOnly? FechaNac { get; set; }
 
         // Sección Contacto de Emergencia

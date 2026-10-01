@@ -35,8 +35,8 @@ namespace AutoGestionAPI.Controllers
             /*string? idUsuarioClaim =
                 User.FindFirst(ClaimTypes.NameIdentifier)?.Value;*/
 
-                string? idUsuarioClaim = "6";
-                //POINER ID
+            string? idUsuarioClaim = "3";
+            //POINER ID
 
             if (string.IsNullOrEmpty(idUsuarioClaim))
             {
