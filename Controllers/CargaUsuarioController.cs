@@ -230,7 +230,7 @@ namespace AutoGestionAPI.Controllers
                     var nuevoRol = new UsuariosRole
                     {
                         IdUsuario = usuario.IdUsuario,
-                        IdRol = dto.IdRol.Value
+                        IdRol = dto.IdRol
                     };
 
                     _context.UsuariosRoles.Add(nuevoRol);

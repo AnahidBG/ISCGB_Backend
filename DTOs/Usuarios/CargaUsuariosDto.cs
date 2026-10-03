@@ -20,7 +20,7 @@ namespace AutoGestionAPI.DTOs.Usuarios
         public string AfiliacionEmergencia { get; set; } = null!;
 
         // Sección Información Académica
-        public int? IdRol { get; set; } // 1: Director, 2: Secretario, 3: Docente, 4: Alumno
+        public int IdRol { get; set; } // 1: Director, 2: Secretario, 3: Docente, 4: Alumno
         public bool EsDirectorSuplente { get; set; } // Solo para Docentes
     }
 }
