@@ -107,26 +107,26 @@ namespace AutoGestionAPI.Controllers
                 return NotFound(new { message = "El usuario especificado no existe o no tiene un perfil de docente." });
             }
 
-            // Usamos la tabla DocenteMaterias y mapeamos el IdComision
             List<MateriaDocenteDto> materiasAsignadas = await _context.DocenteMateria
-                .Where(dm => dm.IdDocente == docente.IdDocente)
-                .Select(dm => new MateriaDocenteDto
-                {
-                    IdMateria = dm.IdMateriaNavigation.IdMateria,
-                    Nombre = dm.IdMateriaNavigation.Nombre,
-                    Carrera = dm.IdMateriaNavigation.Carrera,
-                    Curso = dm.IdMateriaNavigation.Curso,
-                    NroOrden = dm.IdMateriaNavigation.NroOrden,
-                    Formato = dm.IdMateriaNavigation.Formato,
-                    HorasCatedra = dm.IdMateriaNavigation.HorasCatedra,
-                    HorasTotales = dm.IdMateriaNavigation.HorasTotales,
+        .Where(dm => dm.IdDocente == docente.IdDocente)
+        .Select(dm => new MateriaDocenteDto
+        {
+            IdMateria = dm.IdMateriaNavigation.IdMateria,
+            Nombre = dm.IdMateriaNavigation.Nombre,
+            Carrera = dm.IdMateriaNavigation.Carrera,
+            Curso = dm.IdMateriaNavigation.Curso,
+            IdComision = dm.IdComision,
+            NombreComision = dm.IdComisionNavigation.Comision1
+        })
+        .ToListAsync();
 
-                    // Mapeo directo del nuevo campo
-                    IdComision = dm.IdComision
-                })
-                .ToListAsync();
+            var respuesta = new ContextoDocenteDto
+            {
+                IdDocente = docente.IdDocente,
+                Materias = materiasAsignadas
+            };
 
-            return Ok(materiasAsignadas);
+            return Ok(respuesta);
         }
     }
 }
