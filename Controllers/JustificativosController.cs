@@ -139,5 +139,86 @@ namespace AutoGestionAPI.Controllers
             return Ok(pendientes);
         }
 
+        // Endpoint que trae todos los justificativos de un usuario específico.
+        [HttpGet("{idUsuario}/justificativos")]
+        public async Task<IActionResult> ObtenerJustificativosDeUsuario(int idUsuario)
+        {
+
+            var usuario = await _context.Usuarios.FirstOrDefaultAsync(u => u.IdUsuario == idUsuario);
+
+            if (usuario == null)
+            {
+                return NotFound(new { message = "Usuario no encontrado." });
+            }
+
+
+            string nombreCompleto = $"{usuario.Nombre} {usuario.Apellido}".Trim();
+
+
+            var justificativos = await _context.Justificativos
+                .Where(j => j.IdUsuario == idUsuario)
+                .Select(j => new JustificativoResponseDto
+                {
+                    IdJustificativo = j.IdJustificativo,
+                    TipoInasistencia = j.TipoInasistencia,
+                    RutaArchivo = j.RutaArchivo,
+                    NotaAdicional = j.NotaAdicional,
+                    FechaCarga = j.FechaCarga,
+                    Estado = j.Estado,
+                    FechaInasistenciaInicio = j.FechaInasistenciaInicio,
+                    FechaInasistenciaFin = j.FechaInasistenciaFin,
+                    IdUsuarioAuditor = j.IdUsuarioAuditor
+                })
+                .OrderByDescending(j => j.FechaCarga)
+                .ToListAsync();
+
+
+            if (!justificativos.Any())
+            {
+                return Ok(new
+                {
+                    nombreUsuario = nombreCompleto,
+                    message = "El usuario no tiene justificativos presentados.",
+                    data = new List<JustificativoResponseDto>()
+                });
+            }
+
+
+            return Ok(new
+            {
+                nombreUsuario = nombreCompleto,
+                data = justificativos
+            });
+        }
+
+        [HttpGet("todos")]
+        public async Task<IActionResult> ObtenerTodosLosJustificativos()
+        {
+            var justificativos = await _context.Justificativos
+                .Join(_context.Usuarios,
+                    j => j.IdUsuario,
+                    u => u.IdUsuario,
+                    (j, u) => new JustificativoGeneralDto
+                    {
+                        IdJustificativo = j.IdJustificativo,
+                        // Concatenamos el nombre y apellido del usuario
+                        NombreUsuario = (u.Nombre + " " + u.Apellido).Trim(),
+                        TipoInasistencia = j.TipoInasistencia,
+                        Estado = j.Estado,
+                        FechaCarga = j.FechaCarga,
+                        FechaInasistenciaInicio = j.FechaInasistenciaInicio,
+                        FechaInasistenciaFin = j.FechaInasistenciaFin
+                    })
+                .OrderByDescending(j => j.FechaCarga)
+                .ToListAsync();
+
+            if (!justificativos.Any())
+            {
+                return Ok(new { message = "No hay justificativos cargados en el sistema.", data = new List<JustificativoGeneralDto>() });
+            }
+
+            return Ok(new { data = justificativos });
+        }
+
     }
 }
