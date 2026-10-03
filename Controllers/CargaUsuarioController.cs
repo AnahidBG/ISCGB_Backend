@@ -185,8 +185,6 @@ namespace AutoGestionAPI.Controllers
             if (docente != null)
             {
                 // Solo verificamos suplencia si nos mandan el dato explícitamente. 
-                // (Nota: Si tu DTO tiene EsDirectorSuplente como 'bool' normal, no podés saber si está vacío o falso. 
-                // Lo ideal para actualizaciones parciales es que en el DTO sea 'bool?' (nulo)).
                 if (dto.EsDirectorSuplente && docente.DirectorSuplente != true)
                 {
                     var existeSuplente = await _context.Docentes

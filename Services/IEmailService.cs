@@ -17,13 +17,13 @@ namespace AutoGestionAPI.Services
             var smtpClient = new SmtpClient("smtp.gmail.com")
             {
                 Port = 587,
-                Credentials = new NetworkCredential("angelgabrielsilvajr@gmail.com", "zoswnnvqqpmyxnym"),
+                Credentials = new NetworkCredential("notificacionesiscgb@gmail.com", "ylqteryqzxovutgs"),
                 EnableSsl = true,
             };
 
             var mensaje = new MailMessage
             {
-                From = new MailAddress("angelgabrielsilvajr@gmail.com", "Sistema Académico"),
+                From = new MailAddress("notificacionesiscgb@gmail.com", "Sistema Académico"),
                 Subject = "Configura tu contraseña",
                 Body = $"<h3>Hola {nombre}</h3><p>Hacé clic en el siguiente enlace para crear tu contraseña de acceso al sistema: <br><br> <a href='{urlConfiguracion}'>Configurar mi contraseña</a></p>",
                 IsBodyHtml = true,
