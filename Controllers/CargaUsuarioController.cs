@@ -216,6 +216,27 @@ namespace AutoGestionAPI.Controllers
             if (dto.IdProvincia != null && dto.IdProvincia > 0) usuario.IdProvincia = dto.IdProvincia;
             if (dto.FechaNac != null) usuario.FechaNac = dto.FechaNac;
 
+            if (dto.IdRol > 0 && dto.IdRol <= 4)
+            {
+                var rolActual = usuario.UsuariosRoles.FirstOrDefault();
+
+                if (rolActual == null || rolActual.IdRol != dto.IdRol)
+                {
+                    if (usuario.UsuariosRoles.Any())
+                    {
+                        _context.UsuariosRoles.RemoveRange(usuario.UsuariosRoles);
+                    }
+
+                    var nuevoRol = new UsuariosRole
+                    {
+                        IdUsuario = usuario.IdUsuario,
+                        IdRol = dto.IdRol
+                    };
+
+                    _context.UsuariosRoles.Add(nuevoRol);
+                }
+            }
+
             await _context.SaveChangesAsync();
 
             return Ok(new { message = "El perfil del usuario ha sido actualizado correctamente." });
@@ -242,6 +263,24 @@ namespace AutoGestionAPI.Controllers
 
             await _context.SaveChangesAsync();
             return Ok(new { message = "El usuario ha sido dado de baja (inactivo) correctamente." });
+        }
+
+        [HttpPut("alta/{id}")]
+        public async Task<IActionResult> AltaUsuario(int id)
+        {
+            var usuario = await _context.Usuarios.FindAsync(id);
+
+            if (usuario == null) return NotFound(new { message = "Usuario no encontrado." });
+
+
+            if (usuario.EstadoUsuario == true)
+                return BadRequest(new { message = "El usuario ya se encuentra activo en el sistema." });
+
+            usuario.EstadoUsuario = true;
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "El usuario ha sido reactivado (activo) correctamente." });
         }
     }
 }
