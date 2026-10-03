@@ -291,7 +291,34 @@ namespace AutoGestionAPI.Controllers
 
             return Ok(faltantes);
         }
+
+        [HttpGet("aprobados")]
+        public async Task<IActionResult> ObtenerLegajosAprobados()
+        {
+            var aprobados = await _context.Legajos
+                .Where(l => l.Estado == "Aprobado")
+                .Select(l => new LegajoAprobadoDto
+                {
+                    IdLegajo = l.IdLegajo,
+                    NombreUsuario = l.IdUsuarioNavigation.Nombre + " " + l.IdUsuarioNavigation.Apellido,
+                    TipoDocumento = l.IdTipoDocNavigation.NombreDocumento,
+                    RutaArchivo = l.RutaArchivo,
+                    FechaCarga = l.FechaCarga,
+
+                    PresentadoFisico = l.PresentadoFisico,
+
+                    FechaVencimiento = l.FechaVencimiento,
+                    Comentario = l.Comentario,
+
+
+                    Auditor = l.IdUsuarioAuditorNavigation != null
+                                ? l.IdUsuarioAuditorNavigation.Nombre + " " + l.IdUsuarioAuditorNavigation.Apellido
+                                : "Sin auditor"
+                })
+                .ToListAsync();
+
+            return Ok(aprobados);
+        }
+
     }
-
-
 }
