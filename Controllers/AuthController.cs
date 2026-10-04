@@ -25,7 +25,7 @@ namespace AutoGestionAPI.Controllers
 
 
         //Función del login
-
+        [HttpPost("login")]
         public IActionResult Login([FromBody] LoginRequestDto request)
         {
             Usuario? usuario = _context.Usuarios
