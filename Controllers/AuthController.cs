@@ -26,14 +26,14 @@ namespace AutoGestionAPI.Controllers
 
         //Función del login
 
-        [HttpPost("login")]
         public IActionResult Login([FromBody] LoginRequestDto request)
         {
-
             Usuario? usuario = _context.Usuarios
-                      .Include(u => u.UsuariosRoles)
-                       .ThenInclude(ur => ur.IdRolNavigation)
-                      .FirstOrDefault(u => u.Dni == request.Dni);
+                .Include(u => u.UsuariosRoles)
+                    .ThenInclude(ur => ur.IdRolNavigation)
+
+                .Include(u => u.Docentes)
+                .FirstOrDefault(u => u.Dni == request.Dni);
 
             if (usuario == null || usuario.EstadoUsuario == false)
             {
@@ -61,6 +61,8 @@ namespace AutoGestionAPI.Controllers
                 NombreRol = ur.IdRolNavigation?.Rol
             }).ToList();
 
+            bool esSuplente = usuario.Docentes.FirstOrDefault()?.DirectorSuplente ?? false;
+
             return Ok(new
             {
                 Token = token,
@@ -74,8 +76,12 @@ namespace AutoGestionAPI.Controllers
                 Direccion = usuario.Direccion,
                 Email = usuario.Email,
                 IdUsuario = usuario.IdUsuario,
-                Roles = listaRoles
-
+                Roles = listaRoles,
+                Afiliacion_Emergencia = usuario.AfiliacionEmergencia,
+                Fecha_Nacimiento = usuario.FechaNac?.ToString("yyyy-MM-dd"),
+                Cuil = usuario.Cuil,
+                Genero = usuario.Genero,
+                EsDirectorSuplente = esSuplente
             });
         }
 
@@ -106,13 +112,13 @@ namespace AutoGestionAPI.Controllers
         private string GenerarJwtToken(Usuario usuario)
         {
             var jwtSettings = _configuration.GetSection("Jwt");
-            var key = Encoding.ASCII.GetBytes(jwtSettings["Key"]);
+            var key = Encoding.ASCII.GetBytes(jwtSettings["Key"]!);
 
 
             var claims = new List<Claim>
             {
                 new Claim(ClaimTypes.NameIdentifier, usuario.IdUsuario.ToString()),
-                new Claim("DNI", usuario.Dni)
+                new Claim("DNI", usuario.Dni ?? "")
             };
 
 
