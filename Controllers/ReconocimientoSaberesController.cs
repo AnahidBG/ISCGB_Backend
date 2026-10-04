@@ -30,7 +30,7 @@ namespace AutoGestionAPI.Controllers
 
         // Alumno envia solicitud de reconocimiento
         [HttpPost("solicitar")]
-        [Authorize(Roles = "Alumno")] //COMENTAR PARA LAS PRUEBAS CON SWAGGER Y DEJAR DESCOMENTADO PARA LA ENTREGA FINAL
+        [Authorize(Roles = "Alumno")]
         public async Task<IActionResult> EnviarSolicitud([FromForm] SolicitudReconocimientoDto dto)
         {
             // Validación de PDFs
@@ -41,6 +41,7 @@ namespace AutoGestionAPI.Controllers
             string? usuarioIdClaim = User.Claims.FirstOrDefault(c => c.Type == "id")?.Value;
             if (!int.TryParse(usuarioIdClaim, out int idUsuario))
                 return Unauthorized("Token inválido.");
+
 
             var alumno = await _context.Alumnos.FirstOrDefaultAsync(a => a.IdUsuario == idUsuario);
             if (alumno == null)
@@ -108,7 +109,7 @@ namespace AutoGestionAPI.Controllers
                     "No se pudo guardar la documentación de la solicitud.");
 
             }
-
+        }
 
             //Secretaria recibe la solicitud
             [HttpGet("recibirSolicitudReconocimiento")]
@@ -208,7 +209,7 @@ namespace AutoGestionAPI.Controllers
                 // Devuelve el archivo como PDF.
                 return PhysicalFile(
                     ruta,
-                    "application/pdf");
+                    "application/pdf", $"programa_{id}.pdf");
             }
 
             //Secretario descarga anualitico
@@ -230,7 +231,7 @@ namespace AutoGestionAPI.Controllers
                 // Devuelve el archivo como PDF.
                 return PhysicalFile(
                     ruta,
-                    "application/pdf");
+                    "application/pdf", $"analitico_{id}.pdf");
             }
 
         // Valida los archivos
