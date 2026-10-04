@@ -95,6 +95,38 @@ namespace AutoGestionAPI.Controllers
 
             return File(pdfBytes, "application/pdf", $"Programa_Materia_{programa.IdMateria}.pdf");
         }
-        
+
+        [HttpGet("contexto-docente/{idUsuario}")]
+        public async Task<IActionResult> ObtenerContextoDocente(int idUsuario)
+        {
+            var docente = await _context.Docentes
+                .FirstOrDefaultAsync(d => d.IdUsuario == idUsuario);
+
+            if (docente == null)
+            {
+                return NotFound(new { message = "El usuario especificado no existe o no tiene un perfil de docente." });
+            }
+
+            List<MateriaDocenteDto> materiasAsignadas = await _context.DocenteMateria
+        .Where(dm => dm.IdDocente == docente.IdDocente)
+        .Select(dm => new MateriaDocenteDto
+        {
+            IdMateria = dm.IdMateriaNavigation.IdMateria,
+            Nombre = dm.IdMateriaNavigation.Nombre,
+            Carrera = dm.IdMateriaNavigation.Carrera,
+            Curso = dm.IdMateriaNavigation.Curso,
+            IdComision = dm.IdComision,
+            NombreComision = dm.IdComisionNavigation.Comision1
+        })
+        .ToListAsync();
+
+            var respuesta = new ContextoDocenteDto
+            {
+                IdDocente = docente.IdDocente,
+                Materias = materiasAsignadas
+            };
+
+            return Ok(respuesta);
+        }
     }
 }

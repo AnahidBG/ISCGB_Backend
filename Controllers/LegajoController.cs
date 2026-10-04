@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using AutoGestionAPI.Models;
 using AutoGestionAPI.DTOs;
+using AutoGestionAPI.Services;
 
 namespace AutoGestionAPI.Controllers
 {
@@ -11,11 +12,13 @@ namespace AutoGestionAPI.Controllers
     {
         private readonly TuDbContext _context;
         private readonly IWebHostEnvironment _env;
+        private readonly IDocumentacionService _documentacionService;
 
-        public LegajosController(TuDbContext context, IWebHostEnvironment env)
+        public LegajosController(TuDbContext context, IWebHostEnvironment env, IDocumentacionService documentacionService)
         {
             _context = context;
             _env = env;
+            _documentacionService = documentacionService;
         }
 
         // 1. POST: Subir un documento del legajo
@@ -274,7 +277,48 @@ namespace AutoGestionAPI.Controllers
 
             return Ok(resumen);
         }
+
+        //Notificación de documentos faltantes para un usuario específico
+        [HttpGet("{idUsuario}/faltantes")]
+        public async Task<IActionResult> ObtenerFaltantes(int idUsuario)
+        {
+            var faltantes = await _documentacionService.ObtenerDocumentacionFaltanteAsync(idUsuario);
+
+            if (!faltantes.Any())
+            {
+                return Ok(new { message = "El legajo está completo. No falta documentación." });
+            }
+
+            return Ok(faltantes);
+        }
+
+        [HttpGet("aprobados")]
+        public async Task<IActionResult> ObtenerLegajosAprobados()
+        {
+            var aprobados = await _context.Legajos
+                .Where(l => l.Estado == "Aprobado")
+                .Select(l => new LegajoAprobadoDto
+                {
+                    IdLegajo = l.IdLegajo,
+                    NombreUsuario = l.IdUsuarioNavigation.Nombre + " " + l.IdUsuarioNavigation.Apellido,
+                    TipoDocumento = l.IdTipoDocNavigation.NombreDocumento,
+                    RutaArchivo = l.RutaArchivo,
+                    FechaCarga = l.FechaCarga,
+
+                    PresentadoFisico = l.PresentadoFisico,
+
+                    FechaVencimiento = l.FechaVencimiento,
+                    Comentario = l.Comentario,
+
+
+                    Auditor = l.IdUsuarioAuditorNavigation != null
+                                ? l.IdUsuarioAuditorNavigation.Nombre + " " + l.IdUsuarioAuditorNavigation.Apellido
+                                : "Sin auditor"
+                })
+                .ToListAsync();
+
+            return Ok(aprobados);
+        }
+
     }
-
-
 }

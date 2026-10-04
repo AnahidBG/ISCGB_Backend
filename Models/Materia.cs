@@ -13,6 +13,10 @@ public partial class Materia
     public string? Carrera { get; set; }
 
     public string? Curso { get; set; }
+    public int? NroOrden { get; set; }
+    public string? Formato { get; set; }
+    public int? HorasCatedra { get; set; }
+    public int? HorasTotales { get; set; }
 
     public virtual ICollection<AlumnoMaterium> AlumnoMateria { get; set; } = new List<AlumnoMaterium>();
     [InverseProperty("Correlativa")]
