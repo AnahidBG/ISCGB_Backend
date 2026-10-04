@@ -13,7 +13,7 @@ namespace AutoGestionAPI.Controllers
     //[Authorize(Roles = "Director,Secretario")] 
     public class UsuariosAdminController : ControllerBase
     {
-        private readonly TuDbContext _context; // Cambiá por el nombre real de tu DbContext (ej: IscgbContext)
+        private readonly TuDbContext _context;
         private readonly IEmailService _emailService;
 
         public UsuariosAdminController(TuDbContext context, IEmailService emailService)
@@ -25,22 +25,23 @@ namespace AutoGestionAPI.Controllers
         [HttpPost("alta")]
         public async Task<IActionResult> AltaUsuario([FromBody] CargaUsuarioDto dto)
         {
-            if (dto.IdRol < 1 || dto.IdRol > 4)
-                return BadRequest(new { message = "Rol inválido. Solo se permite asignar Director, Secretario, Docente o Alumno." });
+
+            if (dto.IdsRoles == null || !dto.IdsRoles.Any())
+                return BadRequest(new { message = "Debe asignar al menos un rol al usuario." });
+
+            if (dto.IdsRoles.Any(r => r < 1 || r > 4))
+                return BadRequest(new { message = "Uno o más roles son inválidos. Solo se permite asignar Director (1), Secretario (2), Docente (3) o Alumno (4)." });
 
             bool dniExiste = await _context.Usuarios.AnyAsync(u => u.Dni == dto.Dni);
-
             if (dniExiste)
-            {
                 return BadRequest(new { message = $"Ya existe un usuario registrado con el DNI {dto.Dni}." });
-            }
 
             bool emailExiste = await _context.Usuarios.AnyAsync(u => u.Email == dto.Email);
             if (emailExiste)
-            {
                 return BadRequest(new { message = $"El correo electrónico {dto.Email} ya está en uso." });
-            }
-            if (dto.IdRol == 3 && dto.EsDirectorSuplente)
+
+
+            if (dto.IdsRoles.Contains(3) && dto.EsDirectorSuplente)
             {
                 var existeSuplente = await _context.Docentes
                     .Include(d => d.IdUsuarioNavigation)
@@ -70,30 +71,27 @@ namespace AutoGestionAPI.Controllers
                 TelefonoEmergencia = dto.TelefonoEmergencia,
                 AfiliacionEmergencia = dto.AfiliacionEmergencia,
                 EstadoUsuario = true,
-
-
                 PasswordHash = "PENDIENTE_CONFIGURACION",
-
-
                 TokenRecuperacion = tokenConfiguracion,
                 ExpiracionToken = DateTime.UtcNow.AddDays(20)
             };
 
-            // Orden para asignar el rol 
-            // Director = 1 
-            // Secretario = 2
-            // Docente = 3
-            // Alumno = 4
-            nuevoUsuario.UsuariosRoles.Add(new UsuariosRole { IdRol = dto.IdRol });
 
-            if (dto.IdRol == 3)
+            foreach (var idRol in dto.IdsRoles.Distinct())
+            {
+                nuevoUsuario.UsuariosRoles.Add(new UsuariosRole { IdRol = idRol });
+            }
+
+
+            if (dto.IdsRoles.Contains(3))
             {
                 nuevoUsuario.Docentes.Add(new Docente
                 {
                     DirectorSuplente = dto.EsDirectorSuplente
                 });
             }
-            else if (dto.IdRol == 4)
+
+            if (dto.IdsRoles.Contains(4))
             {
                 nuevoUsuario.Alumnos.Add(new Alumno
                 {
@@ -104,11 +102,11 @@ namespace AutoGestionAPI.Controllers
             _context.Usuarios.Add(nuevoUsuario);
             await _context.SaveChangesAsync();
 
-            // 2. Enviar el enlace por correo
+            // 5. Enviar el enlace por correo
             try
             {
-                // El frontend debe tener una ruta que reciba este token, ej: /crear-password?token=abc123def456
                 string urlConfiguracion = $"https://tu-frontend.com/crear-password?token={tokenConfiguracion}";
+                // Descomentá tu servicio cuando lo vayas a usar
                 await _emailService.EnviarLinkConfiguracionAsync(dto.Email, dto.Nombre, urlConfiguracion);
             }
             catch (Exception ex)
@@ -116,7 +114,7 @@ namespace AutoGestionAPI.Controllers
                 return Ok(new { mensaje = "Usuario creado, pero hubo un error al enviar el correo.", error = ex.Message });
             }
 
-            return Ok(new { mensaje = "Usuario creado. Se envió un correo para configurar la contraseña." });
+            return Ok(new { mensaje = "Usuario creado exitosamente. Se envió un correo para configurar la contraseña." });
         }
 
         public class EstablecerPasswordDto
@@ -155,12 +153,21 @@ namespace AutoGestionAPI.Controllers
         {
             var usuario = await _context.Usuarios
                 .Include(u => u.Docentes)
+                // Agregamos el Include de Alumnos para poder validarlo abajo
+                .Include(u => u.Alumnos)
                 .Include(u => u.UsuariosRoles)
                 .FirstOrDefaultAsync(u => u.IdUsuario == id);
 
             if (usuario == null) return NotFound(new { message = "Usuario no encontrado." });
 
-            // 1. Validar y actualizar DNI solo si fue enviado
+            // 1. Validar la lista de roles
+            if (dto.IdsRoles == null || !dto.IdsRoles.Any())
+                return BadRequest(new { message = "Debe asignar al menos un rol al usuario." });
+
+            if (dto.IdsRoles.Any(r => r < 1 || r > 4))
+                return BadRequest(new { message = "Uno o más roles son inválidos." });
+
+            // 2. Validar y actualizar DNI solo si fue enviado
             if (!string.IsNullOrWhiteSpace(dto.Dni))
             {
                 bool dniExiste = await _context.Usuarios.AnyAsync(u => u.Dni == dto.Dni && u.IdUsuario != id);
@@ -170,7 +177,7 @@ namespace AutoGestionAPI.Controllers
                 usuario.Dni = dto.Dni;
             }
 
-            // 2. Validar y actualizar Email solo si fue enviado
+            // 3. Validar y actualizar Email solo si fue enviado
             if (!string.IsNullOrWhiteSpace(dto.Email))
             {
                 bool emailExiste = await _context.Usuarios.AnyAsync(u => u.Email == dto.Email && u.IdUsuario != id);
@@ -180,29 +187,7 @@ namespace AutoGestionAPI.Controllers
                 usuario.Email = dto.Email;
             }
 
-            // 3. Lógica del Director Suplente
-            var docente = usuario.Docentes.FirstOrDefault();
-            if (docente != null)
-            {
-                // Solo verificamos suplencia si nos mandan el dato explícitamente. 
-                if (dto.EsDirectorSuplente && docente.DirectorSuplente != true)
-                {
-                    var existeSuplente = await _context.Docentes
-                        .Include(d => d.IdUsuarioNavigation)
-                        .FirstOrDefaultAsync(d => d.DirectorSuplente == true && d.IdUsuarioNavigation.EstadoUsuario == true);
-
-                    if (existeSuplente != null)
-                        return BadRequest(new { message = $"Ya existe un director suplente asignado con el nombre: {existeSuplente.IdUsuarioNavigation.Nombre} {existeSuplente.IdUsuarioNavigation.Apellido}." });
-
-                    docente.DirectorSuplente = true;
-                }
-                else if (!dto.EsDirectorSuplente)
-                {
-                    docente.DirectorSuplente = false;
-                }
-            }
-
-            // 4. Actualizar el resto de los campos SOLO si no vienen vacíos o nulos
+            // 4. Actualizar el resto de los campos de texto
             if (!string.IsNullOrWhiteSpace(dto.Nombre)) usuario.Nombre = dto.Nombre;
             if (!string.IsNullOrWhiteSpace(dto.Apellido)) usuario.Apellido = dto.Apellido;
             if (!string.IsNullOrWhiteSpace(dto.Cuil)) usuario.Cuil = dto.Cuil;
@@ -216,32 +201,67 @@ namespace AutoGestionAPI.Controllers
             if (dto.IdProvincia != null && dto.IdProvincia > 0) usuario.IdProvincia = dto.IdProvincia;
             if (dto.FechaNac != null) usuario.FechaNac = dto.FechaNac;
 
-            if (dto.IdRol > 0 && dto.IdRol <= 4)
+            // 5. ACTUALIZACIÓN DE MÚLTIPLES ROLES
+            // Primero borramos todos los roles que el usuario tenía antes
+            if (usuario.UsuariosRoles.Any())
             {
-                var rolActual = usuario.UsuariosRoles.FirstOrDefault();
+                _context.UsuariosRoles.RemoveRange(usuario.UsuariosRoles);
+            }
 
-                if (rolActual == null || rolActual.IdRol != dto.IdRol)
+
+            foreach (var idRol in dto.IdsRoles.Distinct())
+            {
+                usuario.UsuariosRoles.Add(new UsuariosRole { IdRol = idRol, IdUsuario = usuario.IdUsuario });
+            }
+
+            // 6. LÓGICA DE PERFILES ESPECÍFICOS (Docente y Suplente)
+            if (dto.IdsRoles.Contains(3))
+            {
+
+                var docente = usuario.Docentes.FirstOrDefault();
+                if (docente == null)
                 {
-                    if (usuario.UsuariosRoles.Any())
-                    {
-                        _context.UsuariosRoles.RemoveRange(usuario.UsuariosRoles);
-                    }
+                    docente = new Docente { IdUsuario = usuario.IdUsuario, DirectorSuplente = false };
+                    _context.Docentes.Add(docente);
+                    usuario.Docentes.Add(docente);
+                }
 
-                    var nuevoRol = new UsuariosRole
-                    {
-                        IdUsuario = usuario.IdUsuario,
-                        IdRol = dto.IdRol
-                    };
 
-                    _context.UsuariosRoles.Add(nuevoRol);
+                if (dto.EsDirectorSuplente && docente.DirectorSuplente != true)
+                {
+                    var existeSuplente = await _context.Docentes
+                        .Include(d => d.IdUsuarioNavigation)
+                        .FirstOrDefaultAsync(d => d.DirectorSuplente == true && d.IdUsuarioNavigation.EstadoUsuario == true && d.IdUsuario != id);
+
+                    if (existeSuplente != null)
+                        return BadRequest(new { message = $"Ya existe un director suplente asignado con el nombre: {existeSuplente.IdUsuarioNavigation.Nombre} {existeSuplente.IdUsuarioNavigation.Apellido}." });
+
+                    docente.DirectorSuplente = true;
+                }
+                else if (!dto.EsDirectorSuplente)
+                {
+                    docente.DirectorSuplente = false;
                 }
             }
+            else
+            {
+                var docente = usuario.Docentes.FirstOrDefault();
+                if (docente != null) docente.DirectorSuplente = false;
+            }
+
+            if (dto.IdsRoles.Contains(4))
+            {
+                if (!usuario.Alumnos.Any())
+                {
+                    _context.Alumnos.Add(new Alumno { IdUsuario = usuario.IdUsuario, Legajo = usuario.Dni });
+                }
+            }
+
 
             await _context.SaveChangesAsync();
 
             return Ok(new { message = "El perfil del usuario ha sido actualizado correctamente." });
         }
-
         [HttpPut("baja/{id}")]
         public async Task<IActionResult> BajaUsuario(int id)
         {
