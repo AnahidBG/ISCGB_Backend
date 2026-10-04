@@ -106,7 +106,6 @@ namespace AutoGestionAPI.Controllers
             try
             {
                 string urlConfiguracion = $"https://tu-frontend.com/crear-password?token={tokenConfiguracion}";
-                // Descomentá tu servicio cuando lo vayas a usar
                 await _emailService.EnviarLinkConfiguracionAsync(dto.Email, dto.Nombre, urlConfiguracion);
             }
             catch (Exception ex)
