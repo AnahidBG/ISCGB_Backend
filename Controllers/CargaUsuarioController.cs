@@ -10,7 +10,7 @@ namespace AutoGestionAPI.Controllers
     [Route("api/[controller]")]
     [ApiController]
     // Bloqueo de seguridad: Solo entran Directores y Secretarios
-    //[Authorize(Roles = "Director,Secretario")] 
+    [Authorize(Roles = "Director,Secretario")] 
     public class UsuariosAdminController : ControllerBase
     {
         private readonly TuDbContext _context; // Cambiá por el nombre real de tu DbContext (ej: IscgbContext)
