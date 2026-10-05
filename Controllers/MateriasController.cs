@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using AutoGestionAPI.Models;
 using AutoGestionAPI.DTOs;
 using AutoGestionAPI.Services;
+using System.Security.Claims;
 
 namespace AutoGestionAPI.Controllers
 {
@@ -18,12 +19,12 @@ namespace AutoGestionAPI.Controllers
             _context = context;
         }
 
-      
+
         [HttpGet("mis-materias")]
         [Authorize(Roles = "Alumno")]
         public async Task<IActionResult> ObtenerMisMaterias()
         {
-            string? usuarioIdClaim = User.Claims.FirstOrDefault(c => c.Type == "id")?.Value;
+            string? usuarioIdClaim = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
 
             if (!int.TryParse(usuarioIdClaim, out int idUsuario))
             {
@@ -53,7 +54,7 @@ namespace AutoGestionAPI.Controllers
             return Ok(materias);
         }
 
-        
+
         [HttpGet("materias-disponibles")]
         public async Task<IActionResult> ObtenerMaterias()
         {

@@ -7,6 +7,7 @@ using System.Linq;
 using Microsoft.EntityFrameworkCore;
 using AutoGestionAPI.Models;
 using AutoGestionAPI.DTOs;
+using System.Security.Claims;
 
 namespace AutoGestionAPI.Controllers
 {
@@ -38,7 +39,8 @@ namespace AutoGestionAPI.Controllers
                 return BadRequest("Ambos archivos deben ser formato PDF y pesar un máximo de 10 MB.");
 
             // Identificar al alumno autenticado
-            string? usuarioIdClaim = User.Claims.FirstOrDefault(c => c.Type == "id")?.Value;
+            string? usuarioIdClaim = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
+
             if (!int.TryParse(usuarioIdClaim, out int idUsuario))
                 return Unauthorized("Token inválido.");
 
@@ -111,128 +113,128 @@ namespace AutoGestionAPI.Controllers
             }
         }
 
-            //Secretaria recibe la solicitud
-            [HttpGet("recibirSolicitudReconocimiento")]
-            [Authorize(Roles = "Secretario")]
-            public async Task<IActionResult> ObtenerPendientesSecretaria()
-            {
-                var solicitudes = await (from r in _context.ReconocimientoSaberes
-                                         join a in _context.Alumnos on r.IdAlumno equals a.IdAlumno // Relaciona solicitud con alumno
-                                         join u in _context.Usuarios on a.IdUsuario equals u.IdUsuario // para obtener nombre, apellido y DNI
-                                         join m in _context.Materias on r.IdMateria equals m.IdMateria // Relaciona solicitud con materia
-                                         where r.IdDocente == null
+        //Secretaria recibe la solicitud
+        [HttpGet("recibirSolicitudReconocimiento")]
+        [Authorize(Roles = "Secretario")]
+        public async Task<IActionResult> ObtenerPendientesSecretaria()
+        {
+            var solicitudes = await (from r in _context.ReconocimientoSaberes
+                                     join a in _context.Alumnos on r.IdAlumno equals a.IdAlumno // Relaciona solicitud con alumno
+                                     join u in _context.Usuarios on a.IdUsuario equals u.IdUsuario // para obtener nombre, apellido y DNI
+                                     join m in _context.Materias on r.IdMateria equals m.IdMateria // Relaciona solicitud con materia
+                                     where r.IdDocente == null
 
-                                         select new
-                                         {
-                                             IdSolicitud = r.IdSolicitud,
-                                             AlumnoNombreCompleto = u.Apellido + ", " + u.Nombre,
-                                             DNI = u.Dni,
-                                             MateriaSolicitada = m.Nombre,
-                                             Comentario = r.Comentario,
+                                     select new
+                                     {
+                                         IdSolicitud = r.IdSolicitud,
+                                         AlumnoNombreCompleto = u.Apellido + ", " + u.Nombre,
+                                         DNI = u.Dni,
+                                         MateriaSolicitada = m.Nombre,
+                                         Comentario = r.Comentario,
 
-                                             // rutas URL para que Angular las pueda descargar
-                                             UrlProgramaPdf =
-                                                $"/api/ReconocimientoSaberes/{r.IdSolicitud}/programa",
+                                         // rutas URL para que Angular las pueda descargar
+                                         UrlProgramaPdf =
+                                            $"/api/ReconocimientoSaberes/{r.IdSolicitud}/programa",
 
-                                             UrlAnaliticoPdf =
-                                                $"/api/ReconocimientoSaberes/{r.IdSolicitud}/analitico"
-                                         }).ToListAsync();
+                                         UrlAnaliticoPdf =
+                                            $"/api/ReconocimientoSaberes/{r.IdSolicitud}/analitico"
+                                     }).ToListAsync();
 
-                return Ok(solicitudes);
-            }
+            return Ok(solicitudes);
+        }
 
-            //Secretario obtiene detalle de la solicitud
-            [HttpGet("{id}")]
-            [Authorize(Roles = "Secretario")]
-            public async Task<IActionResult> ObtenerSolicitud(int id)
-            {
-                var solicitud = await (
-                    from r in _context.ReconocimientoSaberes
+        //Secretario obtiene detalle de la solicitud
+        [HttpGet("{id}")]
+        [Authorize(Roles = "Secretario")]
+        public async Task<IActionResult> ObtenerSolicitud(int id)
+        {
+            var solicitud = await (
+                from r in _context.ReconocimientoSaberes
 
-                    join a in _context.Alumnos
-                        on r.IdAlumno equals a.IdAlumno
+                join a in _context.Alumnos
+                    on r.IdAlumno equals a.IdAlumno
 
-                    join u in _context.Usuarios
-                        on a.IdUsuario equals u.IdUsuario
+                join u in _context.Usuarios
+                    on a.IdUsuario equals u.IdUsuario
 
-                    join m in _context.Materias
-                        on r.IdMateria equals m.IdMateria
+                join m in _context.Materias
+                    on r.IdMateria equals m.IdMateria
 
-                    where r.IdSolicitud == id
+                where r.IdSolicitud == id
 
-                    select new
-                    {
-                        IdSolicitud = r.IdSolicitud,
-
-                        Nombre = u.Nombre,
-
-                        Apellido = u.Apellido,
-
-                        DNI = u.Dni,
-
-                        Materia = m.Nombre,
-
-                        Comentario = r.Comentario,
-
-                        UrlProgramaPdf =
-                            $"/api/ReconocimientoSaberes/{r.IdSolicitud}/programa",
-
-                        UrlAnaliticoPdf =
-                            $"/api/ReconocimientoSaberes/{r.IdSolicitud}/analitico"
-                    })
-                    .FirstOrDefaultAsync();
-
-                if (solicitud == null)
+                select new
                 {
-                    return NotFound("No se encontró la solicitud.");
-                }
+                    IdSolicitud = r.IdSolicitud,
 
-                return Ok(solicitud);
-            }
+                    Nombre = u.Nombre,
 
-            //Secretario ve o descarga el programa - Devuelve el PDF del programa correspondiente
-            [HttpGet("{id}/programa")]
-            [Authorize(Roles = "Secretario")]
-            public IActionResult ObtenerPrograma(int id)
+                    Apellido = u.Apellido,
+
+                    DNI = u.Dni,
+
+                    Materia = m.Nombre,
+
+                    Comentario = r.Comentario,
+
+                    UrlProgramaPdf =
+                        $"/api/ReconocimientoSaberes/{r.IdSolicitud}/programa",
+
+                    UrlAnaliticoPdf =
+                        $"/api/ReconocimientoSaberes/{r.IdSolicitud}/analitico"
+                })
+                .FirstOrDefaultAsync();
+
+            if (solicitud == null)
             {
-                string ruta = Path.Combine(
-                    _uploadPath,
-                    $"programa_{id}.pdf");
-
-                // Verifica que el archivo exista.
-                if (!System.IO.File.Exists(ruta))
-                {
-                    return NotFound(
-                        "No se encontró el programa de la solicitud.");
-                }
-
-                // Devuelve el archivo como PDF.
-                return PhysicalFile(
-                    ruta,
-                    "application/pdf", $"programa_{id}.pdf");
+                return NotFound("No se encontró la solicitud.");
             }
 
-            //Secretario descarga anualitico
-            [HttpGet("{id}/analitico")]
-            [Authorize(Roles = "Secretario")]
-            public IActionResult ObtenerAnalitico(int id)
+            return Ok(solicitud);
+        }
+
+        //Secretario ve o descarga el programa - Devuelve el PDF del programa correspondiente
+        [HttpGet("{id}/programa")]
+        [Authorize(Roles = "Secretario")]
+        public IActionResult ObtenerPrograma(int id)
+        {
+            string ruta = Path.Combine(
+                _uploadPath,
+                $"programa_{id}.pdf");
+
+            // Verifica que el archivo exista.
+            if (!System.IO.File.Exists(ruta))
             {
-                string ruta = Path.Combine(
-                    _uploadPath,
-                    $"analitico_{id}.pdf");
-
-                // Verifica que el archivo exista.
-                if (!System.IO.File.Exists(ruta))
-                {
-                    return NotFound(
-                        "No se encontró el analítico de la solicitud.");
-                }
-
-                // Devuelve el archivo como PDF.
-                return PhysicalFile(
-                    ruta,
-                    "application/pdf", $"analitico_{id}.pdf");
+                return NotFound(
+                    "No se encontró el programa de la solicitud.");
             }
+
+            // Devuelve el archivo como PDF.
+            return PhysicalFile(
+                ruta,
+                "application/pdf", $"programa_{id}.pdf");
+        }
+
+        //Secretario descarga anualitico
+        [HttpGet("{id}/analitico")]
+        [Authorize(Roles = "Secretario")]
+        public IActionResult ObtenerAnalitico(int id)
+        {
+            string ruta = Path.Combine(
+                _uploadPath,
+                $"analitico_{id}.pdf");
+
+            // Verifica que el archivo exista.
+            if (!System.IO.File.Exists(ruta))
+            {
+                return NotFound(
+                    "No se encontró el analítico de la solicitud.");
+            }
+
+            // Devuelve el archivo como PDF.
+            return PhysicalFile(
+                ruta,
+                "application/pdf", $"analitico_{id}.pdf");
+        }
 
         // Valida los archivos
         private bool EsPdfValido(IFormFile archivo)
