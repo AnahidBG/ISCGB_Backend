@@ -68,7 +68,7 @@ namespace AutoGestionAPI.Controllers
                 FechaCarga = DateTime.Now,
                 FechaVencimiento = dto.FechaVencimiento,
                 Estado = "Pendiente",
-                PresentadoFisico = dto.PresentadoFisico,
+                PresentadoFisico = null,
                 Comentario = null
             };
 
@@ -148,10 +148,10 @@ namespace AutoGestionAPI.Controllers
         // Auditar documento (Dirección/Secretaría)
         [HttpPut("auditar/{idLegajo}")]
         public async Task<IActionResult> AuditarLegajo(
-            int idLegajo,
-            [FromQuery] int idUsuarioAuditor,
-            [FromBody] AuditoriaLegajoDto dto
-        )
+     int idLegajo,
+     [FromQuery] int idUsuarioAuditor,
+     [FromBody] AuditoriaLegajoDto dto
+ )
         {
             var legajo = await _context.Legajos.FindAsync(idLegajo);
             if (legajo == null)
@@ -164,6 +164,7 @@ namespace AutoGestionAPI.Controllers
             legajo.IdUsuarioAuditor = idUsuarioAuditor;
             legajo.Estado = dto.Estado;
             legajo.Comentario = dto.Comentario;
+            legajo.PresentadoFisico = dto.PresentadoFisico;
 
             await _context.SaveChangesAsync();
 
@@ -171,7 +172,8 @@ namespace AutoGestionAPI.Controllers
             {
                 Message = "Auditoría de legajo actualizada correctamente.",
                 IdLegajo = legajo.IdLegajo,
-                Estado = legajo.Estado
+                Estado = legajo.Estado,
+                PresentadoFisico = legajo.PresentadoFisico
             });
         }
 
