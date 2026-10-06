@@ -1,0 +1,14 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "5000:80"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:80
+      - ConnectionStrings__DefaultConnection=Server=host.docker.internal;Database=Autogestion_Docente;Trusted_Connection=True;TrustServerCertificate=True;
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: always
