@@ -17,6 +17,7 @@ public partial class TuDbContext : DbContext
 
     public virtual DbSet<Alumno> Alumnos { get; set; }
 
+
     public virtual DbSet<AlumnoMaterium> AlumnoMateria { get; set; }
 
     public virtual DbSet<Comision> Comisions { get; set; }
@@ -58,6 +59,7 @@ public partial class TuDbContext : DbContext
     public virtual DbSet<Usuario> Usuarios { get; set; }
 
     public virtual DbSet<UsuariosRole> UsuariosRoles { get; set; }
+    public virtual DbSet<ConfiguracionSistema> ConfiguracionesSistema { get; set; }
 
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

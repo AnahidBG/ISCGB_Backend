@@ -70,6 +70,7 @@ builder.Services.AddCors(options =>
 
 builder.Services.AddScoped<IDocumentacionService, DocumentacionService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
+builder.Services.AddHostedService<AutoGestionAPI.Workers.NotificadorFaltantesWorker>();
 
 var app = builder.Build();
 
@@ -98,6 +99,7 @@ using (var scope = app.Services.CreateScope())
 
 // app.UseHttpsRedirection();
 
+// Ejecutar dotnet ef database update
 app.UseCors("PermitirAngular");
 
 app.UseStaticFiles();
