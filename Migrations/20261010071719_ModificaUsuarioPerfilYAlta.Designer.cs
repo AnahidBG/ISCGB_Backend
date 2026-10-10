@@ -4,6 +4,7 @@ using AutoGestionAPI.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace AutoGestionAPI.Migrations
 {
     [DbContext(typeof(TuDbContext))]
-    partial class TuDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261010071719_ModificaUsuarioPerfilYAlta")]
+    partial class ModificaUsuarioPerfilYAlta
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -111,18 +114,6 @@ namespace AutoGestionAPI.Migrations
                         .HasName("PK__comision__B25ABED02217EC99");
 
                     b.ToTable("comision", (string)null);
-
-                    b.HasData(
-                        new
-                        {
-                            IdComision = 1,
-                            Comision1 = "A"
-                        },
-                        new
-                        {
-                            IdComision = 2,
-                            Comision1 = "B"
-                        });
                 });
 
             modelBuilder.Entity("AutoGestionAPI.Models.ConfiguracionSistema", b =>
@@ -134,19 +125,13 @@ namespace AutoGestionAPI.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdConfiguracion"));
 
-                    b.Property<int?>("FrecuenciaNotificacionDias")
+                    b.Property<int>("FrecuenciaNotificacionDias")
                         .HasColumnType("int")
                         .HasColumnName("frecuencia_notificacion_dias");
 
-                    b.Property<int?>("LimiteParcialesDiario")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasDefaultValue(2)
-                        .HasColumnName("limite_parciales_diario");
-
                     b.HasKey("IdConfiguracion");
 
-                    b.ToTable("configuracion_sistema", (string)null);
+                    b.ToTable("configuracion_sistema");
                 });
 
             modelBuilder.Entity("AutoGestionAPI.Models.Contenido", b =>
@@ -541,31 +526,6 @@ namespace AutoGestionAPI.Migrations
                         .HasName("PK__materias__7E03FD390CE426B5");
 
                     b.ToTable("materias", (string)null);
-                });
-
-            modelBuilder.Entity("AutoGestionAPI.Models.MesaExamen", b =>
-                {
-                    b.Property<int>("IdExamen")
-                        .HasColumnType("int")
-                        .HasColumnName("id_examen");
-
-                    b.Property<int>("IdDocente")
-                        .HasColumnType("int")
-                        .HasColumnName("id_docente");
-
-                    b.Property<string>("EstadoConfirmacion")
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(20)
-                        .IsUnicode(false)
-                        .HasColumnType("varchar(20)")
-                        .HasDefaultValue("Pendiente")
-                        .HasColumnName("estado_confirmacion");
-
-                    b.HasKey("IdExamen", "IdDocente");
-
-                    b.HasIndex("IdDocente");
-
-                    b.ToTable("mesa_examen", (string)null);
                 });
 
             modelBuilder.Entity("AutoGestionAPI.Models.Pai", b =>
@@ -1019,23 +979,6 @@ namespace AutoGestionAPI.Migrations
                         .HasName("PK__tipo_exa__C593611AD6D49A87");
 
                     b.ToTable("tipo_examen", (string)null);
-
-                    b.HasData(
-                        new
-                        {
-                            IdTipoExamen = 1,
-                            TipoExamen = "Parcial"
-                        },
-                        new
-                        {
-                            IdTipoExamen = 2,
-                            TipoExamen = "Recuperatorio"
-                        },
-                        new
-                        {
-                            IdTipoExamen = 3,
-                            TipoExamen = "Final"
-                        });
                 });
 
             modelBuilder.Entity("AutoGestionAPI.Models.TipoTitulo", b =>
@@ -1281,19 +1224,21 @@ namespace AutoGestionAPI.Migrations
                     b.ToTable("Usuarios_roles", (string)null);
                 });
 
-            modelBuilder.Entity("DocenteExamene", b =>
+            modelBuilder.Entity("MesaExaman", b =>
                 {
-                    b.Property<int>("IdDocentesIdDocente")
-                        .HasColumnType("int");
-
                     b.Property<int>("IdExamen")
-                        .HasColumnType("int");
+                        .HasColumnType("int")
+                        .HasColumnName("id_examen");
 
-                    b.HasKey("IdDocentesIdDocente", "IdExamen");
+                    b.Property<int>("IdDocente")
+                        .HasColumnType("int")
+                        .HasColumnName("id_docente");
 
-                    b.HasIndex("IdExamen");
+                    b.HasKey("IdExamen", "IdDocente");
 
-                    b.ToTable("DocenteExamene");
+                    b.HasIndex("IdDocente");
+
+                    b.ToTable("mesa_examen", (string)null);
                 });
 
             modelBuilder.Entity("AutoGestionAPI.Models.Alumno", b =>
@@ -1500,26 +1445,6 @@ namespace AutoGestionAPI.Migrations
                     b.Navigation("IdUsuarioNavigation");
                 });
 
-            modelBuilder.Entity("AutoGestionAPI.Models.MesaExamen", b =>
-                {
-                    b.HasOne("AutoGestionAPI.Models.Docente", "IdDocenteNavigation")
-                        .WithMany()
-                        .HasForeignKey("IdDocente")
-                        .IsRequired()
-                        .HasConstraintName("FK_MesaExamen_Docente");
-
-                    b.HasOne("AutoGestionAPI.Models.Examene", "IdExamenNavigation")
-                        .WithMany()
-                        .HasForeignKey("IdExamen")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired()
-                        .HasConstraintName("FK_MesaExamen_Examen");
-
-                    b.Navigation("IdDocenteNavigation");
-
-                    b.Navigation("IdExamenNavigation");
-                });
-
             modelBuilder.Entity("AutoGestionAPI.Models.PlanesMateria", b =>
                 {
                     b.HasOne("AutoGestionAPI.Models.Materia", "Materia")
@@ -1643,19 +1568,19 @@ namespace AutoGestionAPI.Migrations
                     b.Navigation("IdUsuarioNavigation");
                 });
 
-            modelBuilder.Entity("DocenteExamene", b =>
+            modelBuilder.Entity("MesaExaman", b =>
                 {
                     b.HasOne("AutoGestionAPI.Models.Docente", null)
                         .WithMany()
-                        .HasForeignKey("IdDocentesIdDocente")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .HasForeignKey("IdDocente")
+                        .IsRequired()
+                        .HasConstraintName("FK_MesaExamen_Docente");
 
                     b.HasOne("AutoGestionAPI.Models.Examene", null)
                         .WithMany()
                         .HasForeignKey("IdExamen")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .IsRequired()
+                        .HasConstraintName("FK_MesaExamen_Examen");
                 });
 
             modelBuilder.Entity("AutoGestionAPI.Models.Alumno", b =>

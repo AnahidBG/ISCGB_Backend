@@ -40,6 +40,9 @@ public partial class Usuario
 
     public string? Cuil { get; set; }
 
+    public string? FotoPerfil { get; set; }
+    public DateTime FechaAlta { get; set; }
+
     public string? Genero { get; set; }
     [Column("afiliacion_emergencia")]
     public string? AfiliacionEmergencia { get; set; }
