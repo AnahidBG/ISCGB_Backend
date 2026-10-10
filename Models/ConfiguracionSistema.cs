@@ -11,6 +11,10 @@ namespace AutoGestionAPI.Models
         public int IdConfiguracion { get; set; }
 
         [Column("frecuencia_notificacion_dias")]
-        public int FrecuenciaNotificacionDias { get; set; }
+        public int? FrecuenciaNotificacionDias { get; set; }
+
+        public int? LimiteParcialesDiario { get; set; }
+
+
     }
 }

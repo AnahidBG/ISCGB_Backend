@@ -9,62 +9,79 @@ namespace AutoGestionAPI.Workers
 {
     public class NotificadorFaltantesWorker : BackgroundService
     {
-        private readonly IServiceProvider _serviceProvider;
+        // CAMBIO CLAVE ARCHITECTÓNICO: Usamos IServiceScopeFactory en lugar de IServiceProvider
+        private readonly IServiceScopeFactory _scopeFactory;
         private readonly ILogger<NotificadorFaltantesWorker> _logger;
 
-        public NotificadorFaltantesWorker(IServiceProvider serviceProvider, ILogger<NotificadorFaltantesWorker> logger)
+        public NotificadorFaltantesWorker(IServiceScopeFactory scopeFactory, ILogger<NotificadorFaltantesWorker> logger)
         {
-            _serviceProvider = serviceProvider;
+            _scopeFactory = scopeFactory;
             _logger = logger;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            _logger.LogInformation("Motor de notificaciones automáticas iniciado (Escenario B).");
+            _logger.LogInformation("Motor de notificaciones iniciado (Versión Inteligente con Roles y Obligatoriedades).");
 
             while (!stoppingToken.IsCancellationRequested)
             {
                 try
                 {
-                    using (var scope = _serviceProvider.CreateScope())
+                    // 1. CREAMOS UN ÁMBITO (SCOPE) NUEVO EN CADA ITERACIÓN
+                    using (var scope = _scopeFactory.CreateScope())
                     {
+                        // 2. EXTRAEMOS LOS SERVICIOS FRESCOS Y LISTOS PARA USAR
                         var context = scope.ServiceProvider.GetRequiredService<TuDbContext>();
                         var emailService = scope.ServiceProvider.GetRequiredService<IEmailService>();
 
-                        var config = await context.ConfiguracionesSistema.FirstOrDefaultAsync(stoppingToken);
+                        var config = await context.ConfiguracionesSistema.OrderBy(c => c.IdConfiguracion).FirstOrDefaultAsync(stoppingToken);
                         int diasFrecuencia = config?.FrecuenciaNotificacionDias ?? 7;
                         var fechaLimite = DateTime.UtcNow.AddDays(-diasFrecuencia);
 
-                        // 1. Buscamos TODOS los tipos de documentos que existen en el sistema
+                        // Traemos los catálogos para no ir a la base de datos a cada rato
                         var todosLosTiposDocumentos = await context.TiposDocumentos.ToListAsync(stoppingToken);
 
-                        // 2. Buscamos a los usuarios a los que ya se les cumplió el plazo para ser notificados
+                        // Traemos SOLAMENTE las reglas donde Obligatorio es verdadero
+                        var reglasDocumentos = await context.RolesTiposDocumentos
+                            .Where(r => r.Obligatorio == true)
+                            .ToListAsync(stoppingToken);
+
+                        // Buscamos a los usuarios que necesitan revisión
                         var usuarios = await context.Usuarios
                             .Include(u => u.LegajoIdUsuarioNavigations)
+                            .Include(u => u.UsuariosRoles)
                             .Where(u => u.FechaUltimaNotificacion == null || u.FechaUltimaNotificacion < fechaLimite)
+                            .AsSplitQuery()
                             .ToListAsync(stoppingToken);
 
                         int usuariosNotificados = 0;
 
                         foreach (var usuario in usuarios)
                         {
-                            // 3. Obtenemos los IDs de los documentos que el usuario YA subió (estén Pendientes o Aprobados)
+                            var idsRolesUsuario = usuario.UsuariosRoles.Select(ur => ur.IdRol).ToList();
+
+                            var idsDocumentosExigidos = reglasDocumentos
+                                .Where(r => idsRolesUsuario.Contains(r.IdRol))
+                                .Select(r => r.IdTipoDoc)
+                                .Distinct()
+                                .ToList();
+
                             var idsSubidos = usuario.LegajoIdUsuarioNavigations
                                 .Select(l => l.IdTipoDoc)
                                 .ToList();
 
-                            // 4. Comparamos: ¿Qué documentos de la lista general NO están en la lista de subidos del usuario?
-                            var documentosFaltantes = todosLosTiposDocumentos
-                                .Where(td => !idsSubidos.Contains(td.IdTipoDoc))
-                                .Select(td => td.NombreDocumento) // Usamos NombreDocumento tal cual está en tu controlador
-                                .ToList();
+                            var idsFaltantes = idsDocumentosExigidos.Except(idsSubidos).ToList();
 
-                            // 5. Si le falta al menos un documento, le mandamos el correo
-                            if (documentosFaltantes.Any())
+                            if (idsFaltantes.Any())
                             {
+                                var nombresDocumentosFaltantes = todosLosTiposDocumentos
+                                    .Where(td => idsFaltantes.Contains(td.IdTipoDoc))
+                                    .Select(td => td.NombreDocumento)
+                                    .ToList();
+
                                 try
                                 {
-                                    await emailService.EnviarAvisoFaltantesAsync(usuario.Email, usuario.Nombre, documentosFaltantes);
+                                    await emailService.EnviarAvisoFaltantesAsync(usuario.Email, usuario.Nombre ?? "Usuario", nombresDocumentosFaltantes);
                                     usuario.FechaUltimaNotificacion = DateTime.UtcNow;
                                     usuariosNotificados++;
                                 }
@@ -75,22 +92,20 @@ namespace AutoGestionAPI.Workers
                             }
                         }
 
-                        // 6. Guardamos los cambios en la base de datos (las nuevas fechas de notificación)
                         if (usuariosNotificados > 0)
                         {
                             await context.SaveChangesAsync(stoppingToken);
                             _logger.LogInformation($"Se enviaron {usuariosNotificados} avisos de documentación faltante.");
                         }
-                    }
+                    } // <- Aquí el 'using' cierra y destruye el contexto limpiamente en cada ciclo
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Ocurrió un error al ejecutar el motor de notificaciones.");
                 }
 
-                // Para probarlo AHORA MISMO, descomentá la de 1 minuto y comentá la de 24 horas:
-                // await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
-                await Task.Delay(TimeSpan.FromHours(24), stoppingToken);
+                // Dejado en 1 minuto para sus pruebas
+                await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
             }
         }
     }

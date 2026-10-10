@@ -4,6 +4,7 @@ using AutoGestionAPI.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace AutoGestionAPI.Migrations
 {
     [DbContext(typeof(TuDbContext))]
-    partial class TuDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261010085846_AjusteTablasExamen")]
+    partial class AjusteTablasExamen
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -134,11 +137,11 @@ namespace AutoGestionAPI.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdConfiguracion"));
 
-                    b.Property<int?>("FrecuenciaNotificacionDias")
+                    b.Property<int>("FrecuenciaNotificacionDias")
                         .HasColumnType("int")
                         .HasColumnName("frecuencia_notificacion_dias");
 
-                    b.Property<int?>("LimiteParcialesDiario")
+                    b.Property<int>("LimiteParcialesDiario")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int")
                         .HasDefaultValue(2)
@@ -554,6 +557,7 @@ namespace AutoGestionAPI.Migrations
                         .HasColumnName("id_docente");
 
                     b.Property<string>("EstadoConfirmacion")
+                        .IsRequired()
                         .ValueGeneratedOnAdd()
                         .HasMaxLength(20)
                         .IsUnicode(false)

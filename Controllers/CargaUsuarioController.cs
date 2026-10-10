@@ -10,7 +10,7 @@ namespace AutoGestionAPI.Controllers
     [Route("api/[controller]")]
     [ApiController]
     // Bloqueo de seguridad: Solo entran Directores y Secretarios
-    [Authorize(Roles = "Director,Secretario")] 
+    [Authorize(Roles = "Director,Secretario")]
     public class UsuariosAdminController : ControllerBase
     {
         private readonly TuDbContext _context;
@@ -73,7 +73,8 @@ namespace AutoGestionAPI.Controllers
                 EstadoUsuario = true,
                 PasswordHash = "PENDIENTE_CONFIGURACION",
                 TokenRecuperacion = tokenConfiguracion,
-                ExpiracionToken = DateTime.UtcNow.AddDays(20)
+                ExpiracionToken = DateTime.UtcNow.AddDays(20),
+                FechaAlta = DateTime.Now
             };
 
 
@@ -121,7 +122,7 @@ namespace AutoGestionAPI.Controllers
             public string Token { get; set; } = string.Empty;
             public string NuevaPassword { get; set; } = string.Empty;
         }
-
+        [AllowAnonymous]
         [HttpPost("establecer-password")]
         public async Task<IActionResult> EstablecerPassword([FromBody] EstablecerPasswordDto dto)
         {

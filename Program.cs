@@ -99,7 +99,10 @@ using (var scope = app.Services.CreateScope())
 
 // app.UseHttpsRedirection();
 
+
 // Ejecutar dotnet ef database update
+
+
 app.UseCors("PermitirAngular");
 
 app.UseStaticFiles();
@@ -108,5 +111,21 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+// --- AUTO-MIGRACIÓN PARA EL EQUIPO ---
+using (var scope = app.Services.CreateScope())
+{
+    var context = scope.ServiceProvider.GetRequiredService<TuDbContext>();
+    try
+    {
+        context.Database.Migrate(); // Lee la carpeta Migrations y actualiza SQL Server
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Error actualizando la base de datos: {ex.Message}");
+    }
+}
+
+app.Run();
 
 app.Run();

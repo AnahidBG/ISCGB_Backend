@@ -61,6 +61,8 @@ public partial class TuDbContext : DbContext
     public virtual DbSet<UsuariosRole> UsuariosRoles { get; set; }
     public virtual DbSet<ConfiguracionSistema> ConfiguracionesSistema { get; set; }
 
+    public virtual DbSet<MesaExamen> MesasExamenes { get; set; }
+
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -94,15 +96,30 @@ public partial class TuDbContext : DbContext
     // Documentos para el Rol 4
     new RolesTiposDocumento { IdRolesTiposDocumentos = 10, IdRol = 4, IdTipoDoc = 1, Obligatorio = false }, // DNI
     new RolesTiposDocumento { IdRolesTiposDocumentos = 11, IdRol = 4, IdTipoDoc = 5, Obligatorio = true },  // Apto Medico
-    new RolesTiposDocumento { IdRolesTiposDocumentos = 12, IdRol = 4, IdTipoDoc = 7, Obligatorio = false }, // Antecedentes
-    new RolesTiposDocumento { IdRolesTiposDocumentos = 13, IdRol = 4, IdTipoDoc = 10, Obligatorio = false },
-    new RolesTiposDocumento { IdRolesTiposDocumentos = 14, IdRol = 4, IdTipoDoc = 11, Obligatorio = false }
+    new RolesTiposDocumento { IdRolesTiposDocumentos = 12, IdRol = 4, IdTipoDoc = 7, Obligatorio = false } // Antecedentes
+    // new RolesTiposDocumento { IdRolesTiposDocumentos = 13, IdRol = 4, IdTipoDoc = 10, Obligatorio = false },
+    // new RolesTiposDocumento { IdRolesTiposDocumentos = 14, IdRol = 4, IdTipoDoc = 11, Obligatorio = false }
 );
+        // --- DATOS SEMILLA PARA TIPOS DE EXAMEN ---
+        modelBuilder.Entity<TipoExaman>().HasData(
+            new TipoExaman { IdTipoExamen = 1, TipoExamen = "Parcial" },
+            new TipoExaman { IdTipoExamen = 2, TipoExamen = "Recuperatorio" },
+            new TipoExaman { IdTipoExamen = 3, TipoExamen = "Final" }
+        );
+
+        // ---DATOS SEMILLA PARA COMISIONES-- -
+        // Ajuste estos nombres según las comisiones reales del Instituto Brochero
+        modelBuilder.Entity<Comision>().HasData(
+            new Comision { IdComision = 1, Comision1 = "A" },
+            new Comision { IdComision = 2, Comision1 = "B" }
+        );
+
+
         modelBuilder.Entity<Role>().HasData(
-        new Role { IdRol = 5, Rol = "Director" }, // Cambiá 'NombreRol' por el nombre de tu propiedad (ej. Nombre, Descripcion, o Rol)
-        new Role { IdRol = 4, Rol = "Secretario" },
-        new Role { IdRol = 2, Rol = "Docente" },
-        new Role { IdRol = 3, Rol = "Alumno" }
+        new Role { IdRol = 1, Rol = "Director" },
+        new Role { IdRol = 2, Rol = "Secretario" },
+        new Role { IdRol = 3, Rol = "Docente" },
+        new Role { IdRol = 4, Rol = "Alumno" }
         );
         modelBuilder.Entity<Alumno>(entity =>
         {
@@ -204,6 +221,18 @@ public partial class TuDbContext : DbContext
                 .HasColumnName("director_suplente");
             entity.Property(e => e.IdUsuario).HasColumnName("id_usuario");
 
+            entity.Property(e => e.EsSuplente)
+                .HasDefaultValue(false)
+                .HasColumnName("es_suplente");
+
+            entity.Property(e => e.FechaInicioSuplencia)
+                .HasColumnType("datetime")
+                .HasColumnName("fecha_inicio_suplencia");
+
+            entity.Property(e => e.FechaFinSuplencia)
+                .HasColumnType("datetime")
+                .HasColumnName("fecha_fin_suplencia");
+
             entity.HasOne(d => d.IdUsuarioNavigation).WithMany(p => p.Docentes)
                 .HasForeignKey(d => d.IdUsuario)
                 .OnDelete(DeleteBehavior.ClientSetNull)
@@ -292,24 +321,33 @@ public partial class TuDbContext : DbContext
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_Examenes_TipoExamen");
 
-            entity.HasMany(d => d.IdDocentes).WithMany(p => p.IdExamen)
-                .UsingEntity<Dictionary<string, object>>(
-                    "MesaExaman",
-                    r => r.HasOne<Docente>().WithMany()
-                        .HasForeignKey("IdDocente")
-                        .OnDelete(DeleteBehavior.ClientSetNull)
-                        .HasConstraintName("FK_MesaExamen_Docente"),
-                    l => l.HasOne<Examene>().WithMany()
-                        .HasForeignKey("IdExamen")
-                        .OnDelete(DeleteBehavior.ClientSetNull)
-                        .HasConstraintName("FK_MesaExamen_Examen"),
-                    j =>
-                    {
-                        j.HasKey("IdExamen", "IdDocente");
-                        j.ToTable("mesa_examen");
-                        j.IndexerProperty<int>("IdExamen").HasColumnName("id_examen");
-                        j.IndexerProperty<int>("IdDocente").HasColumnName("id_docente");
-                    });
+            modelBuilder.Entity<MesaExamen>(entity =>
+        {
+
+            entity.HasKey(e => new { e.IdExamen, e.IdDocente });
+            entity.ToTable("mesa_examen");
+
+            entity.Property(e => e.IdExamen).HasColumnName("id_examen");
+            entity.Property(e => e.IdDocente).HasColumnName("id_docente");
+
+
+            entity.Property(e => e.EstadoConfirmacion)
+                .HasMaxLength(20)
+                .IsUnicode(false)
+                .HasDefaultValue("Pendiente")
+                .HasColumnName("estado_confirmacion");
+
+
+            entity.HasOne(d => d.IdDocenteNavigation).WithMany()
+                .HasForeignKey(d => d.IdDocente)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_MesaExamen_Docente");
+
+            entity.HasOne(d => d.IdExamenNavigation).WithMany()
+                .HasForeignKey(d => d.IdExamen)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("FK_MesaExamen_Examen");
+        });
         });
 
         modelBuilder.Entity<Justificativo>(entity =>
@@ -654,10 +692,18 @@ public partial class TuDbContext : DbContext
                 .HasColumnType("datetime")
                 .HasColumnName("expiracion_token");
             entity.Property(e => e.IdProvincia).HasColumnName("id_provincia");
-            entity.Property(e => e.LugarNacimiento)
-                .HasMaxLength(150)
+            // entity.Property(e => e.LugarNacimiento)
+            //     .HasMaxLength(150)
+            //     .IsUnicode(false)
+            //     .HasColumnName("lugar_nacimiento");
+            entity.Property(e => e.FotoPerfil)
+                .HasMaxLength(255)
                 .IsUnicode(false)
-                .HasColumnName("lugar_nacimiento");
+                .HasColumnName("foto_perfil");
+            entity.Property(e => e.FechaAlta)
+                .HasColumnType("datetime")
+                .HasColumnName("fecha_alta")
+                .HasDefaultValueSql("GETDATE()");
             entity.Property(e => e.Nombre)
                 .HasMaxLength(100)
                 .IsUnicode(false)
@@ -703,6 +749,18 @@ public partial class TuDbContext : DbContext
                 .HasForeignKey(d => d.IdUsuario)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_UsuariosRoles_Usuario");
+        });
+        modelBuilder.Entity<ConfiguracionSistema>(entity =>
+        {
+
+            entity.ToTable("configuracion_sistema");
+
+            entity.HasKey(e => e.IdConfiguracion);
+            entity.Property(e => e.IdConfiguracion).HasColumnName("id_configuracion");
+
+            entity.Property(e => e.LimiteParcialesDiario)
+               .HasDefaultValue(2)
+               .HasColumnName("limite_parciales_diario");
         });
 
         OnModelCreatingPartial(modelBuilder);

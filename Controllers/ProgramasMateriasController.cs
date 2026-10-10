@@ -3,6 +3,8 @@ using Microsoft.EntityFrameworkCore;
 using AutoGestionAPI.Models;
 using AutoGestionAPI.DTOs;
 using QuestPDF.Fluent;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 
 namespace AutoGestionAPI.Controllers
 {
@@ -97,8 +99,14 @@ namespace AutoGestionAPI.Controllers
         }
 
         [HttpGet("contexto-docente/{idUsuario}")]
+        [Authorize(Roles = "Docente")]
         public async Task<IActionResult> ObtenerContextoDocente(int idUsuario)
         {
+            string? tokenUsuarioId = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
+            if (tokenUsuarioId != idUsuario.ToString())
+            {
+                return Forbid(); // Retorna error 403 si intenta ver datos de otro profesor
+            }
             var docente = await _context.Docentes
                 .FirstOrDefaultAsync(d => d.IdUsuario == idUsuario);
 
