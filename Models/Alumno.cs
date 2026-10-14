@@ -13,6 +13,8 @@ public partial class Alumno
 
     public string? EstadoAcademico { get; set; }
 
+    public string? Legajo { get; set; }
+
     public virtual ICollection<AlumnoMaterium> AlumnoMateria { get; set; } = new List<AlumnoMaterium>();
 
     public virtual Usuario IdUsuarioNavigation { get; set; } = null!;

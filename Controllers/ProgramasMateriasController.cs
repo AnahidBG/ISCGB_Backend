@@ -3,6 +3,8 @@ using Microsoft.EntityFrameworkCore;
 using AutoGestionAPI.Models;
 using AutoGestionAPI.DTOs;
 using QuestPDF.Fluent;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 
 namespace AutoGestionAPI.Controllers
 {
@@ -94,6 +96,45 @@ namespace AutoGestionAPI.Controllers
 
 
             return File(pdfBytes, "application/pdf", $"Programa_Materia_{programa.IdMateria}.pdf");
+        }
+
+        [HttpGet("contexto-docente/{idUsuario}")]
+        [Authorize(Roles = "Docente")]
+        public async Task<IActionResult> ObtenerContextoDocente(int idUsuario)
+        {
+            string? tokenUsuarioId = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
+            if (tokenUsuarioId != idUsuario.ToString())
+            {
+                return Forbid(); // Retorna error 403 si intenta ver datos de otro profesor
+            }
+            var docente = await _context.Docentes
+                .FirstOrDefaultAsync(d => d.IdUsuario == idUsuario);
+
+            if (docente == null)
+            {
+                return NotFound(new { message = "El usuario especificado no existe o no tiene un perfil de docente." });
+            }
+
+            List<MateriaDocenteDto> materiasAsignadas = await _context.DocenteMateria
+        .Where(dm => dm.IdDocente == docente.IdDocente)
+        .Select(dm => new MateriaDocenteDto
+        {
+            IdMateria = dm.IdMateriaNavigation.IdMateria,
+            Nombre = dm.IdMateriaNavigation.Nombre,
+            Carrera = dm.IdMateriaNavigation.Carrera,
+            Curso = dm.IdMateriaNavigation.Curso,
+            IdComision = dm.IdComision,
+            NombreComision = dm.IdComisionNavigation.Comision1
+        })
+        .ToListAsync();
+
+            var respuesta = new ContextoDocenteDto
+            {
+                IdDocente = docente.IdDocente,
+                Materias = materiasAsignadas
+            };
+
+            return Ok(respuesta);
         }
     }
 }

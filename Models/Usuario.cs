@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-
+using System.ComponentModel.DataAnnotations.Schema;
 namespace AutoGestionAPI.Models;
 
 public partial class Usuario
@@ -34,7 +34,21 @@ public partial class Usuario
     public string? Direccion { get; set; }
 
     public int? IdProvincia { get; set; }
-    public DateOnly? fecha_nac { get; set; }
+
+    [Column("fecha_nac")]
+    public DateOnly? FechaNac { get; set; }
+
+    public string? Cuil { get; set; }
+
+    public string? FotoPerfil { get; set; }
+    public DateTime FechaAlta { get; set; }
+
+    public string? Genero { get; set; }
+    [Column("afiliacion_emergencia")]
+    public string? AfiliacionEmergencia { get; set; }
+
+    [Column("fecha_ultima_notificacion")]
+    public DateTime? FechaUltimaNotificacion { get; set; }
 
     public virtual ICollection<Alumno> Alumnos { get; set; } = new List<Alumno>();
 

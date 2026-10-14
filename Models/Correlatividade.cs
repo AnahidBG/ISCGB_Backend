@@ -13,5 +13,9 @@ public partial class Correlatividade
 
     public int CorrelativaId { get; set; }
 
+    public virtual Materia Correlativa { get; set; } = null!;
+
+    public virtual Materia Materia { get; set; } = null!;
+
     public virtual PlanesEstudio PlanEstudio { get; set; } = null!;
 }
