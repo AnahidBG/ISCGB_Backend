@@ -164,7 +164,7 @@ namespace AutoGestionAPI.Services
             Directory.GetCurrentDirectory(),
             "wwwroot",
             "images",
-            "sello.png");
+            "sello.JPG");
 
             return File.ReadAllBytes(rutaSello);
         }
