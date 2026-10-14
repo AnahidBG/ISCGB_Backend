@@ -115,21 +115,40 @@ namespace AutoGestionAPI.Services
                             col.Item()
                                 .PaddingTop(15)
                                 .Text(
-                                    "A pedido del Interesado y al solo efecto de ser presentado.");
+                                    "A pedido del Interesado y al solo efecto de ser presentado a quien corresponda.");
 
                             //FECHA
                             col.Item()
                                 .Text(fechaTexto);
 
-                            // SELLO
+                            // SELLO y FIRMA SEGÚN EL CERTIFICADO
                             col.Item()
                                 .PaddingTop(50)
                                 .Row(row =>
                                 {
-                                    row.RelativeItem()
-                                    .AlignCenter()
-                                    .Width(120)
-                                    .Image(sello);
+                                    if (conHorario)
+                                    {
+                                        // Espacio con textos de "Sello Institucional" y "Firma"
+                                        row.RelativeItem()
+                                           .Text(t =>
+                                           {
+                                               t.Line("Sello");
+                                               t.Line("Institucional");
+                                           });
+
+                                        row.RelativeItem()
+                                           .Text("Firma");
+                                    }
+                                    else
+                                    {
+                                        // Si no tiene horario muestra la imagen del sello digital
+                                        byte[] sello = ObtenerSello();
+
+                                        row.RelativeItem()
+                                           .AlignCenter()
+                                           .Width(120)
+                                           .Image(sello);
+                                    }
                                 });
                         });
                 });
