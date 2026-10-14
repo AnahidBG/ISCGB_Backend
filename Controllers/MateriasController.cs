@@ -5,6 +5,7 @@ using AutoGestionAPI.Models;
 using AutoGestionAPI.DTOs;
 using AutoGestionAPI.Services;
 using System.Security.Claims;
+using AutoGestionAPI.DTOs.Materias;
 
 namespace AutoGestionAPI.Controllers
 {
@@ -160,6 +161,61 @@ namespace AutoGestionAPI.Controllers
             });
         }
 
+        [HttpPost("asignar-alumno")]
+        public async Task<IActionResult> AsignarMateriaAlumno([FromBody] AsignarMateriaAlumnoDto dto)
+        {
+            // Validar que el alumno exista
+            bool existeAlumno = await _context.Alumnos.AnyAsync(a => a.IdAlumno == dto.IdAlumno);
+            if (!existeAlumno)
+                return BadRequest(new { message = "El alumno seleccionado no existe." });
 
+            // Validar que la materia exista
+            bool existeMateria = await _context.Materias.AnyAsync(m => m.IdMateria == dto.IdMateria);
+            if (!existeMateria)
+                return BadRequest(new { message = "La materia seleccionada no existe." });
+
+            // Validar que la comisión exista
+            bool existeComision = await _context.Comisions.AnyAsync(c => c.IdComision == dto.IdComision);
+            if (!existeComision)
+                return BadRequest(new { message = "La comisión seleccionada no existe." });
+
+            // Validar duplicados en la tabla alumno_materia
+            bool yaAsignado = await _context.AlumnoMateria.AnyAsync(am =>
+                am.IdAlumno == dto.IdAlumno &&
+                am.IdMateria == dto.IdMateria &&
+                am.IdComision == dto.IdComision);
+
+            if (yaAsignado)
+                return BadRequest(new { message = "El alumno ya se encuentra inscripto en esa materia y comisión." });
+
+            // Guardar en la tabla intermedia alumno_materia
+            AlumnoMaterium asignacion = new AlumnoMaterium
+            {
+                IdAlumno = dto.IdAlumno,
+                IdMateria = dto.IdMateria,
+                IdComision = dto.IdComision
+            };
+
+            _context.AlumnoMateria.Add(asignacion);
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Materia y comisión asignadas al alumno correctamente." });
+        }
+
+        [HttpGet("alumnos-disponibles")]
+        public async Task<IActionResult> ObtenerAlumnos()
+        {
+            var alumnos = await _context.Alumnos
+                .Include(a => a.IdUsuarioNavigation)
+                .Select(a => new
+                {
+                    IdAlumno = a.IdAlumno,
+                    NombreCompleto = a.IdUsuarioNavigation.Apellido + ", " + a.IdUsuarioNavigation.Nombre + " (Legajo: " + a.Legajo + ")"
+                })
+                .OrderBy(a => a.NombreCompleto)
+                .ToListAsync();
+
+            return Ok(new { data = alumnos });
+        }
     }
 }
