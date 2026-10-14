@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace AutoGestionAPI.Models;
 
@@ -12,12 +13,22 @@ public partial class Materia
     public string? Carrera { get; set; }
 
     public string? Curso { get; set; }
+    public int? NroOrden { get; set; }
+    public string? Formato { get; set; }
+    public int? HorasCatedra { get; set; }
+    public int? HorasTotales { get; set; }
 
     public virtual ICollection<AlumnoMaterium> AlumnoMateria { get; set; } = new List<AlumnoMaterium>();
+    [InverseProperty("Correlativa")]
+    public virtual ICollection<Correlatividade> CorrelatividadeCorrelativas { get; set; } = new List<Correlatividade>();
+    [InverseProperty("Materia")]
+    public virtual ICollection<Correlatividade> CorrelatividadeMateria { get; set; } = new List<Correlatividade>();
 
     public virtual ICollection<DocenteMaterium> DocenteMateria { get; set; } = new List<DocenteMaterium>();
 
     public virtual ICollection<Examene> Examenes { get; set; } = new List<Examene>();
+
+    public virtual ICollection<PlanesMateria> PlanesMateria { get; set; } = new List<PlanesMateria>();
 
     public virtual ICollection<ProgramasMaterium> ProgramasMateria { get; set; } = new List<ProgramasMaterium>();
 

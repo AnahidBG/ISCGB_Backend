@@ -5,7 +5,7 @@ using System.Security.Claims;
 using System.Text;
 using BCrypt.Net;
 using AutoGestionAPI.DTOs;
-using  AutoGestionAPI.Models;
+using AutoGestionAPI.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace AutoGestionAPI.Controllers
@@ -14,7 +14,7 @@ namespace AutoGestionAPI.Controllers
     [Route("api/[controller]")]
     public class AuthController : ControllerBase
     {
-        private readonly TuDbContext _context; 
+        private readonly TuDbContext _context;
         private readonly IConfiguration _configuration;
 
         public AuthController(TuDbContext context, IConfiguration configuration)
@@ -22,27 +22,32 @@ namespace AutoGestionAPI.Controllers
             _context = context;
             _configuration = configuration;
         }
-        
+
 
         //Función del login
-
         [HttpPost("login")]
         public IActionResult Login([FromBody] LoginRequestDto request)
         {
-            
             Usuario? usuario = _context.Usuarios
-                      .Include(u => u.UsuariosRoles)
-                       .ThenInclude(ur => ur.IdRolNavigation)
-                      .FirstOrDefault(u => u.Dni == request.Dni);
+                .Include(u => u.UsuariosRoles)
+                    .ThenInclude(ur => ur.IdRolNavigation)
+
+                .Include(u => u.Docentes)
+                .FirstOrDefault(u => u.Dni == request.Dni);
 
             if (usuario == null || usuario.EstadoUsuario == false)
             {
                 return Unauthorized(new { message = "DNI no encontrado o cuenta inactiva." });
             }
 
+            if (usuario.PasswordHash == "PENDIENTE_CONFIGURACION")
+            {
+                return Unauthorized(new { message = "Debe configurar su contraseña por primera vez usando el enlace enviado a su correo electrónico." });
+            }
+
             // Verificamos la contraseña encriptada (password_hash)
             bool isPasswordValid = BCrypt.Net.BCrypt.Verify(request.Password, usuario.PasswordHash);
-            
+
             if (!isPasswordValid)
             {
                 return Unauthorized(new { message = "Contraseña incorrecta." });
@@ -50,13 +55,16 @@ namespace AutoGestionAPI.Controllers
 
             var token = GenerarJwtToken(usuario);
 
-            var listaRoles = usuario.UsuariosRoles.Select(ur => new 
+            var listaRoles = usuario.UsuariosRoles.Select(ur => new
             {
                 IdRol = ur.IdRol,
                 NombreRol = ur.IdRolNavigation?.Rol
             }).ToList();
 
-            return Ok(new { 
+            bool esSuplente = usuario.Docentes.FirstOrDefault()?.DirectorSuplente ?? false;
+
+            return Ok(new
+            {
                 Token = token,
                 Usuario = usuario.Nombre + " " + usuario.Apellido,
                 Estado_usuario = usuario.EstadoUsuario,
@@ -68,8 +76,12 @@ namespace AutoGestionAPI.Controllers
                 Direccion = usuario.Direccion,
                 Email = usuario.Email,
                 IdUsuario = usuario.IdUsuario,
-                Roles = listaRoles
-
+                Roles = listaRoles,
+                Afiliacion_Emergencia = usuario.AfiliacionEmergencia,
+                Fecha_Nacimiento = usuario.FechaNac?.ToString("yyyy-MM-dd"),
+                Cuil = usuario.Cuil,
+                Genero = usuario.Genero,
+                EsDirectorSuplente = esSuplente
             });
         }
 
@@ -78,17 +90,17 @@ namespace AutoGestionAPI.Controllers
         [HttpPost("crear-usuario-prueba")]
         public IActionResult CrearUsuarioPrueba([FromBody] LoginRequestDto request)
         {
-            Usuario nuevoUsuario = new Usuario 
+            Usuario nuevoUsuario = new Usuario
             {
                 Dni = request.Dni,
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password), 
-                Email = "prueba@test.com", 
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
+                Email = "prueba@test.com",
                 EstadoUsuario = true,
-               UsuariosRoles = new List<UsuariosRole> 
-                { 
-                    new UsuariosRole { IdRol = 1 } 
+                UsuariosRoles = new List<UsuariosRole>
+                {
+                    new UsuariosRole { IdRol = 1 }
                 }
-                
+
             };
 
             _context.Usuarios.Add(nuevoUsuario);
@@ -100,22 +112,22 @@ namespace AutoGestionAPI.Controllers
         private string GenerarJwtToken(Usuario usuario)
         {
             var jwtSettings = _configuration.GetSection("Jwt");
-            var key = Encoding.ASCII.GetBytes(jwtSettings["Key"]);
+            var key = Encoding.ASCII.GetBytes(jwtSettings["Key"]!);
 
-            
+
             var claims = new List<Claim>
             {
-                new Claim(ClaimTypes.NameIdentifier, usuario.IdUsuario.ToString()), 
-                new Claim("DNI", usuario.Dni)
+                new Claim(ClaimTypes.NameIdentifier, usuario.IdUsuario.ToString()),
+                new Claim("DNI", usuario.Dni ?? "")
             };
 
-            
+
             foreach (var rol in usuario.UsuariosRoles)
             {
                 // Verificamos que el rol no sea nulo
                 if (!string.IsNullOrEmpty(rol.IdRolNavigation?.Rol))
                 {
-                    
+
                     claims.Add(new Claim(ClaimTypes.Role, rol.IdRolNavigation.Rol));
                 }
             }

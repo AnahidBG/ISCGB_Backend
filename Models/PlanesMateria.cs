@@ -15,5 +15,7 @@ public partial class PlanesMateria
 
     public int MateriaId { get; set; }
 
+    public virtual Materia Materia { get; set; } = null!;
+
     public virtual PlanesEstudio PlanEstudio { get; set; } = null!;
 }
