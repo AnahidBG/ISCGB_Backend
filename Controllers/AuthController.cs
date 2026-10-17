@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
@@ -5,7 +6,9 @@ using System.Security.Claims;
 using System.Text;
 using BCrypt.Net;
 using AutoGestionAPI.DTOs;
+using AutoGestionAPI.DTOs.Contrasena;
 using AutoGestionAPI.Models;
+using AutoGestionAPI.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace AutoGestionAPI.Controllers
@@ -17,10 +20,78 @@ namespace AutoGestionAPI.Controllers
         private readonly TuDbContext _context;
         private readonly IConfiguration _configuration;
 
-        public AuthController(TuDbContext context, IConfiguration configuration)
+        private readonly IEmailService _emailService;
+
+        public AuthController(TuDbContext context, IConfiguration configuration, IEmailService emailService)
         {
             _context = context;
             _configuration = configuration;
+            _emailService = emailService;
+        }
+
+        // Endpoint 1 para el recupero de contraseña: Recibe la solicitud del DNI desde la pantalla de Angular
+        [HttpPost("recuperar-contrasena")]
+        [AllowAnonymous]
+        public async Task<IActionResult> SolicitarRecuperacion([FromBody] SolicitarRecuperacionDto dto)
+        {
+            if (string.IsNullOrWhiteSpace(dto.Dni))
+                return BadRequest(new { message = "El DNI es obligatorio." });
+
+            Usuario? usuario = await _context.Usuarios
+                .FirstOrDefaultAsync(u => u.Dni == dto.Dni && u.EstadoUsuario == true);
+
+            // Retornamos OK unificado para evitar enumeración de usuarios en la base de datos
+            if (usuario == null)
+            {
+                return Ok(new { message = "Si el DNI existe en el sistema, se enviará un correo con instrucciones." });
+            }
+
+            // Generar token criptográficamente seguro y fecha de expiración (1 hora)
+            string tokenRecuperacion = Guid.NewGuid().ToString("N");
+            usuario.TokenRecuperacion = tokenRecuperacion;
+            usuario.ExpiracionToken = DateTime.UtcNow.AddHours(1);
+
+            await _context.SaveChangesAsync();
+
+            try
+            {
+                // URL de la app en Angular que abre la pantalla para colocar la nueva clave
+                string urlRecuperacion = $"http://localhost:4200/restablecer-password?token={tokenRecuperacion}";
+                await _emailService.EnviarLinkConfiguracionAsync(usuario.Email, usuario.Nombre, urlRecuperacion);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Error al intentar enviar el correo de recuperación.", error = ex.Message });
+            }
+
+            return Ok(new { message = "Si el DNI existe en el sistema, se enviará un correo con instrucciones." });
+        }
+
+        // Endpoint 2: Recibe la clave nueva y la actualiza en la BD
+        [HttpPost("establecer-password")]
+        [AllowAnonymous]
+        public async Task<IActionResult> EstablecerPassword([FromBody] EstablecerPasswordDto dto)
+        {
+            if (string.IsNullOrWhiteSpace(dto.Token) || string.IsNullOrWhiteSpace(dto.NuevaPassword))
+                return BadRequest(new { message = "El token y la nueva contraseña son obligatorios." });
+
+            var usuario = await _context.Usuarios
+                .FirstOrDefaultAsync(u => u.TokenRecuperacion == dto.Token);
+
+            if (usuario == null)
+                return BadRequest(new { message = "El enlace es inválido." });
+
+            if (usuario.ExpiracionToken < DateTime.UtcNow)
+                return BadRequest(new { message = "El enlace ha expirado. Solicite uno nuevo." });
+
+            // Actualizamos la contraseña con BCrypt y limpiamos los tokens consumidos
+            usuario.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NuevaPassword);
+            usuario.TokenRecuperacion = null;
+            usuario.ExpiracionToken = null;
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Contraseña configurada exitosamente. Ya puede iniciar sesión." });
         }
 
 
