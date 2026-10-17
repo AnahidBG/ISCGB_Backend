@@ -149,6 +149,7 @@ namespace AutoGestionAPI.Controllers
 
 
         [HttpPut("modificar/{id}")]
+        [Authorize(Roles = "Director,Secretario")]
         public async Task<IActionResult> ModificarUsuario(int id, [FromBody] CargaUsuarioDto dto)
         {
             var usuario = await _context.Usuarios
@@ -263,6 +264,7 @@ namespace AutoGestionAPI.Controllers
             return Ok(new { message = "El perfil del usuario ha sido actualizado correctamente." });
         }
         [HttpPut("baja/{id}")]
+        [Authorize(Roles = "Director,Secretario")]
         public async Task<IActionResult> BajaUsuario(int id)
         {
             var usuario = await _context.Usuarios
@@ -286,6 +288,7 @@ namespace AutoGestionAPI.Controllers
         }
 
         [HttpPut("alta/{id}")]
+        [Authorize(Roles = "Director,Secretario")]
         public async Task<IActionResult> AltaUsuario(int id)
         {
             var usuario = await _context.Usuarios.FindAsync(id);

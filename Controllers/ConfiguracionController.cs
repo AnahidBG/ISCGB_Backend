@@ -29,6 +29,7 @@ namespace AutoGestionAPI.Controllers
         }
 
         [HttpPut("frecuencia-notificaciones")]
+        [Authorize(Roles = "Director,Secretario")]
         public async Task<IActionResult> ActualizarFrecuencia([FromBody] ConfiguracionNotificacionDto dto)
         {
             if (dto.DiasFrecuencia <= 0)
@@ -76,6 +77,57 @@ namespace AutoGestionAPI.Controllers
                 .ToListAsync();
 
             return Ok(notificaciones);
+        }
+        [HttpGet("alertas-rechazos")]
+        [Authorize(Roles = "Director,Secretario")] // Restringido estrictamente a los mandos administrativos
+        public async Task<IActionResult> ObtenerAsignacionesRechazadas()
+        {
+            // Buscamos todas las asignaciones que los docentes hayan rechazado
+            var alertas = await _context.MesasExamenes
+                .Include(m => m.IdDocenteNavigation)
+                    .ThenInclude(d => d.IdUsuarioNavigation) // Navegamos para obtener el nombre del profesor
+                .Include(m => m.IdExamenNavigation)
+                    .ThenInclude(e => e.IdMateriaNavigation) // Navegamos para obtener la materia
+                .Where(m => m.EstadoConfirmacion == "Rechazada")
+                .Select(m => new
+                {
+                    IdExamen = m.IdExamen,
+                    IdDocente = m.IdDocente,
+                    Docente = m.IdDocenteNavigation.IdUsuarioNavigation.Nombre + " " + m.IdDocenteNavigation.IdUsuarioNavigation.Apellido,
+                    Materia = m.IdExamenNavigation.IdMateriaNavigation.Nombre,
+                    Fecha = m.IdExamenNavigation.Fecha,
+                    Mensaje = "Asignación rechazada. Requiere reasignar a un nuevo docente de forma urgente."
+                })
+                .OrderBy(m => m.Fecha) // Ordenamos para que vean primero las mesas más próximas en el calendario
+                .ToListAsync();
+
+            return Ok(alertas);
+        }
+        [HttpPut("ocultar-alerta-rechazo")]
+        [Authorize(Roles = "Director,Secretario")]
+        public async Task<IActionResult> OcultarAlertaRechazo([FromBody] OcultarAlertaDto dto)
+        {
+            // 1. Buscamos el registro exacto de ese profesor y ese examen
+            var mesa = await _context.MesasExamenes
+                .FirstOrDefaultAsync(m => m.IdExamen == dto.IdExamen && m.IdDocente == dto.IdDocente);
+
+            if (mesa == null)
+            {
+                return NotFound(new { message = "No se encontró el registro de la asignación." });
+            }
+
+            // 2. Verificamos que realmente esté en estado "Rechazada"
+            if (mesa.EstadoConfirmacion == "Rechazada")
+            {
+                // 3. Cambiamos el estado para archivar la alerta sin borrar el historial En caso de necesitar un reporte de docentes que rechazaron mesas de exámenes se puede buscar en la base de datos como "Rechazada_Vista".
+                mesa.EstadoConfirmacion = "Rechazada_Vista";
+
+                await _context.SaveChangesAsync();
+
+                return Ok(new { message = "Alerta archivada. El rechazo ha quedado guardado en el historial." });
+            }
+
+            return BadRequest(new { message = "Esta alerta ya fue procesada o no se encuentra en estado de rechazo." });
         }
     }
 }
