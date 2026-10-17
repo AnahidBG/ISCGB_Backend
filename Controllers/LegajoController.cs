@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using AutoGestionAPI.Models;
 using AutoGestionAPI.DTOs;
 using AutoGestionAPI.Services;
+using Microsoft.AspNetCore.Authorization;
 
 namespace AutoGestionAPI.Controllers
 {
@@ -147,13 +148,14 @@ namespace AutoGestionAPI.Controllers
 
         // Auditar documento (Dirección/Secretaría)
         [HttpPut("auditar/{idLegajo}")]
+        [Authorize(Roles = "Director,Secretario")]
         public async Task<IActionResult> AuditarLegajo(
      int idLegajo,
      [FromQuery] int idUsuarioAuditor,
      [FromBody] AuditoriaLegajoDto dto
  )
         {
-            var legajo = await _context.Legajos.FindAsync(idLegajo);
+            Legajo? legajo = await _context.Legajos.FindAsync(idLegajo);
             if (legajo == null)
                 return NotFound(new { message = "No se encontró el registro de legajo." });
 

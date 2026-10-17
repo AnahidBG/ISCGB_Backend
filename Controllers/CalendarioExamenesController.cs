@@ -19,7 +19,7 @@ namespace AutoGestionAPI.Controllers
         }
 
         // Si usa JWT, puede descomentar la siguiente línea para restringir el acceso:
-        // [Authorize(Roles = "Director, Secretario")]
+        [Authorize(Roles = "Director, Secretario")]
         [HttpPut("limite-parciales")]
         public async Task<IActionResult> ActualizarLimiteParciales([FromBody] ActualizarLimiteParcialesDto dto)
         {
@@ -80,15 +80,34 @@ namespace AutoGestionAPI.Controllers
         }
 
         [HttpPost("registrar")]
+        [Authorize(Roles = "Docente")] // Aseguramos que solo entre un docente
         public async Task<IActionResult> RegistrarExamen([FromBody] CargaExamenDto dto)
         {
-            bool superaLimite = await SuperaLimiteDiarioAsync(dto.Fecha);
+            // 1. Identificamos al docente logueado
+            string? usuarioIdClaim = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
+            if (!int.TryParse(usuarioIdClaim, out int idUsuario)) return Unauthorized();
 
+            var docente = await _context.Docentes.FirstOrDefaultAsync(d => d.IdUsuario == idUsuario);
+            if (docente == null) return NotFound(new { message = "Docente no encontrado." });
+
+            // 2. MAGIA DE SEGURIDAD: Verificamos en la tabla docente_materia si realmente da esa clase
+            // (Ajuste "DocenteMaterias" al nombre exacto que le haya puesto Entity Framework a su tabla intermedia)
+            bool dictaLaMateria = await _context.DocenteMateria
+                .AnyAsync(dm => dm.IdDocente == docente.IdDocente && dm.IdMateria == dto.IdMateria);
+
+            if (!dictaLaMateria)
+            {
+                return BadRequest(new { message = "No tiene autorización para registrar exámenes de una materia que no dicta." });
+            }
+
+            // 3. Verificamos el límite diario que ya teníamos programado
+            bool superaLimite = await SuperaLimiteDiarioAsync(dto.Fecha);
             if (superaLimite)
             {
                 return BadRequest(new { message = "No se puede registrar. Se ha superado el límite de parciales para ese día." });
             }
 
+            // 4. Guardamos el examen (tal como lo tenía)
             var nuevoExamen = new Examene
             {
                 Fecha = dto.Fecha,
@@ -100,7 +119,11 @@ namespace AutoGestionAPI.Controllers
             _context.Examenes.Add(nuevoExamen);
             await _context.SaveChangesAsync();
 
-            return Ok(new { message = "Examen registrado correctamente." });
+            return Ok(new
+            {
+                message = "Examen registrado correctamente.",
+                idExamen = nuevoExamen.IdExamen
+            });
         }
 
         [HttpGet("estado-mes")]
@@ -181,7 +204,7 @@ namespace AutoGestionAPI.Controllers
                 .Select(t => new
                 {
                     idTipoExamen = t.IdTipoExamen,
-                    nombre = t.TipoExamen // Propiedad mapeada en su modelo
+                    nombre = t.TipoExamen
                 })
                 .ToListAsync();
 
@@ -225,6 +248,124 @@ namespace AutoGestionAPI.Controllers
             ).Distinct().ToListAsync();
 
             return Ok(materiasAsignadas);
+        }
+
+        [HttpGet("del-mes")]
+        [Authorize]
+        public async Task<ActionResult<IEnumerable<ExamenMesDto>>> ObtenerExamenesDelMes()
+        {
+            int mesActual = DateTime.Now.Month;
+            int anioActual = DateTime.Now.Year;
+
+            var examenesMes = await _context.Examenes
+                .Include(e => e.IdMateriaNavigation)
+                .Include(e => e.IdComisionNavigation)    // NUEVO: Traemos los datos de la Comisión
+                .Include(e => e.IdTipoExamenNavigation)  // NUEVO: Traemos los datos del Tipo de Examen
+                .Where(e => e.Fecha.Month == mesActual && e.Fecha.Year == anioActual)
+                .Select(e => new ExamenMesDto
+                {
+                    IdExamen = e.IdExamen,
+                    Materia = e.IdMateriaNavigation.Nombre,
+                    Fecha = e.Fecha,
+
+                    // Ajuste ".Nombre" por el campo exacto que tenga en sus clases (ej. .Descripcion, .NumeroComision, etc.)
+                    Comision = e.IdComisionNavigation.Comision1,
+                    TipoExamen = e.IdTipoExamenNavigation.TipoExamen
+                })
+                .OrderBy(e => e.Fecha)
+                .ToListAsync();
+
+            if (!examenesMes.Any())
+            {
+                return Ok(new List<ExamenMesDto>());
+            }
+
+            return Ok(examenesMes);
+        }
+
+        // --- 3. ENDPOINT PARA ASIGNAR DOCENTE A MESA DE EXAMEN YA CREADA ---
+        [HttpPost("asignar-docente")]
+        [Authorize(Roles = "Director,Administrador")]
+        public async Task<IActionResult> AsignarDocenteAMesa([FromBody] AsignarMesaDto dto)
+        {
+            // 1. Verificamos que no exista ya una asignación para este examen y este docente
+            bool asignacionExiste = await _context.MesasExamenes
+                .AnyAsync(m => m.IdExamen == dto.IdExamen && m.IdDocente == dto.IdDocente);
+
+            if (asignacionExiste)
+            {
+                return BadRequest(new { message = "El docente ya se encuentra asignado a esta mesa de examen." });
+            }
+
+            // 2. Creamos la asignación
+            MesaExamen nuevaAsignacion = new MesaExamen // Ajuste el nombre exacto de su clase si es singular o plural
+            {
+                IdExamen = dto.IdExamen,
+                IdDocente = dto.IdDocente,
+                EstadoConfirmacion = "Pendiente" // Estado inicial automático
+            };
+
+            _context.MesasExamenes.Add(nuevaAsignacion);
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Docente asignado correctamente. Se ha notificado al profesor." });
+        }
+
+        //Endpoint para crear mesa de examen y asignar al presidente de mesa.
+
+        [HttpPost("registrar-mesa")]
+        [Authorize(Roles = "Director,Secretario")]
+        public async Task<IActionResult> RegistrarMesa([FromBody] RegistrarMesaDto dto)
+        {
+
+            bool docenteExiste = await _context.Docentes.AnyAsync(d => d.IdDocente == dto.IdDocente);
+            if (!docenteExiste)
+            {
+                return BadRequest(new { message = "El docente seleccionado no existe." });
+            }
+
+            using var transaction = await _context.Database.BeginTransactionAsync();
+
+            try
+            {
+                // Paso A: Insertamos los datos de la fecha y materia en Examenes
+                var nuevaMesa = new Examene
+                {
+                    Fecha = dto.Fecha,
+                    IdMateria = dto.IdMateria,
+                    IdComision = dto.IdComision,
+                    IdTipoExamen = dto.IdTipoExamen
+                };
+
+                _context.Examenes.Add(nuevaMesa);
+                await _context.SaveChangesAsync();
+
+
+                var asignacionDocente = new MesaExamen
+                {
+                    IdExamen = nuevaMesa.IdExamen,
+                    IdDocente = dto.IdDocente,
+                    EstadoConfirmacion = "Pendiente"
+                };
+
+                _context.MesasExamenes.Add(asignacionDocente);
+                await _context.SaveChangesAsync();
+
+                // Confirmamos definitivamente ambos cambios en SQL Server
+                await transaction.CommitAsync();
+
+                return Ok(new
+                {
+                    message = "Mesa de examen registrada exitosamente. Se ha enviado la notificación pendiente al docente.",
+                    idExamen = nuevaMesa.IdExamen
+                });
+            }
+            catch (Exception)
+            {
+
+                await transaction.RollbackAsync();
+                return StatusCode(500, new { message = "Ocurrió un error al registrar la mesa de examen." });
+            }
         }
 
     }

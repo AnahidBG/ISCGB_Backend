@@ -21,6 +21,7 @@ namespace AutoGestionAPI.Controllers
 
         // 1. POST: Crear un nuevo programa de materia con sus contenidos
         [HttpPost]
+        [Authorize(Roles = "Docente")]
         public async Task<IActionResult> CrearPrograma([FromBody] CrearProgramaDto dto)
         {
             var docenteExiste = await _context.Docentes.AnyAsync(d => d.IdDocente == dto.IdDocente);

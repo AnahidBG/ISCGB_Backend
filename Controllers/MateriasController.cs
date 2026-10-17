@@ -32,7 +32,7 @@ namespace AutoGestionAPI.Controllers
                 return Unauthorized("Token inválido.");
             }
 
-            var alumno = await _context.Alumnos.FirstOrDefaultAsync(a => a.IdUsuario == idUsuario);
+            Alumno? alumno = await _context.Alumnos.FirstOrDefaultAsync(a => a.IdUsuario == idUsuario);
 
             if (alumno == null)
             {
@@ -103,6 +103,7 @@ namespace AutoGestionAPI.Controllers
         }
 
         [HttpPost("asignar")]
+        [Authorize(Roles = "Director,Secretario")]
         public async Task<IActionResult> AsignarMateriaADocente([FromBody] AsignarMateriaDto dto)
         {
             var asignacionExiste = await _context.DocenteMateria
@@ -129,6 +130,7 @@ namespace AutoGestionAPI.Controllers
         }
 
         [HttpPost("cargar-materia")]
+        [Authorize(Roles = "Director,Secretario")]
         public async Task<IActionResult> AgregarMateria([FromBody] CargarMateriaDto dto)
         {
             if (string.IsNullOrWhiteSpace(dto.NombreMateria))
@@ -162,6 +164,7 @@ namespace AutoGestionAPI.Controllers
         }
 
         [HttpPost("asignar-alumno")]
+        [Authorize(Roles = "Director,Secretario")]
         public async Task<IActionResult> AsignarMateriaAlumno([FromBody] AsignarMateriaAlumnoDto dto)
         {
             // Validar que el alumno exista

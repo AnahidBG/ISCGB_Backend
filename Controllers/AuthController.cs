@@ -81,7 +81,8 @@ namespace AutoGestionAPI.Controllers
                 Fecha_Nacimiento = usuario.FechaNac?.ToString("yyyy-MM-dd"),
                 Cuil = usuario.Cuil,
                 Genero = usuario.Genero,
-                EsDirectorSuplente = esSuplente
+                EsDirectorSuplente = esSuplente,
+                Foto = usuario.FotoPerfil
             });
         }
 

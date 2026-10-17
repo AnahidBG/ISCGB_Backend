@@ -196,30 +196,35 @@ namespace AutoGestionAPI.Controllers
                 usuario.Email = dto.Email;
             }
 
-            // Mapeo del resto de campos editables
-            if (!string.IsNullOrWhiteSpace(dto.Telefono))
-                usuario.Telefono = dto.Telefono;
+            if (dto.Telefono != null)
+                usuario.Telefono = dto.Telefono == "" ? null : dto.Telefono.Trim();
 
-            if (!string.IsNullOrWhiteSpace(dto.TelefonoEmergencia))
-                usuario.TelefonoEmergencia = dto.TelefonoEmergencia;
+            if (dto.TelefonoEmergencia != null)
+                usuario.TelefonoEmergencia = dto.TelefonoEmergencia == "" ? null : dto.TelefonoEmergencia.Trim();
 
-            if (!string.IsNullOrWhiteSpace(dto.LugarNacimiento))
-                usuario.LugarNacimiento = dto.LugarNacimiento;
+            if (dto.LugarNacimiento != null)
+                usuario.LugarNacimiento = dto.LugarNacimiento == "" ? null : dto.LugarNacimiento.Trim();
 
-            if (!string.IsNullOrWhiteSpace(dto.ContactoEmergencia))
-                usuario.ContactoEmergencia = dto.ContactoEmergencia;
+            if (dto.ContactoEmergencia != null)
+                usuario.ContactoEmergencia = dto.ContactoEmergencia == "" ? null : dto.ContactoEmergencia.Trim();
 
-            if (!string.IsNullOrWhiteSpace(dto.Direccion))
-                usuario.Direccion = dto.Direccion;
+            if (dto.Direccion != null)
+                usuario.Direccion = dto.Direccion == "" ? null : dto.Direccion.Trim();
 
-            if (!string.IsNullOrWhiteSpace(dto.Genero))
-                usuario.Genero = dto.Genero;
+            if (dto.Genero != null)
+                usuario.Genero = dto.Genero == "" ? null : dto.Genero.Trim();
 
-            if (!string.IsNullOrWhiteSpace(dto.AfiliacionEmergencia))
-                usuario.AfiliacionEmergencia = dto.AfiliacionEmergencia;
+            if (dto.AfiliacionEmergencia != null)
+                usuario.AfiliacionEmergencia = dto.AfiliacionEmergencia == "" ? null : dto.AfiliacionEmergencia.Trim();
+
 
             if (dto.IdProvincia.HasValue)
-                usuario.IdProvincia = dto.IdProvincia.Value;
+            {
+                if (dto.IdProvincia.Value <= 0)
+                    usuario.IdProvincia = null;
+                else
+                    usuario.IdProvincia = dto.IdProvincia.Value; // Actualiza la provincia
+            }
 
             await _context.SaveChangesAsync();
 

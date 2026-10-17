@@ -108,7 +108,6 @@ app.UseCors("PermitirAngular");
 app.UseStaticFiles();
 
 app.UseAuthentication();
-app.UseAuthorization();
 
 app.MapControllers();
 
@@ -125,7 +124,5 @@ using (var scope = app.Services.CreateScope())
         Console.WriteLine($"Error actualizando la base de datos: {ex.Message}");
     }
 }
-
-app.Run();
 
 app.Run();
