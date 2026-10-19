@@ -107,7 +107,7 @@ namespace AutoGestionAPI.Controllers
             // 5. Enviar el enlace por correo
             try
             {
-                string urlConfiguracion = $"https://tu-frontend.com/crear-password?token={tokenConfiguracion}";
+                string urlConfiguracion = $"http://localhost:4200/crear-password?token={tokenConfiguracion}";
                 await _emailService.EnviarLinkConfiguracionAsync(dto.Email, dto.Nombre, urlConfiguracion);
             }
             catch (Exception ex)
