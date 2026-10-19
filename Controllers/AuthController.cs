@@ -40,13 +40,13 @@ namespace AutoGestionAPI.Controllers
             Usuario? usuario = await _context.Usuarios
                 .FirstOrDefaultAsync(u => u.Dni == dto.Dni && u.EstadoUsuario == true);
 
-            // Retornamos OK unificado para evitar enumeración de usuarios en la base de datos
+            // Retornamos OK 
             if (usuario == null)
             {
                 return Ok(new { message = "Si el DNI existe en el sistema, se enviará un correo con instrucciones." });
             }
 
-            // Generar token criptográficamente seguro y fecha de expiración (1 hora)
+            // Genera token seguro y fecha de expiración de 1 hora
             string tokenRecuperacion = Guid.NewGuid().ToString("N");
             usuario.TokenRecuperacion = tokenRecuperacion;
             usuario.ExpiracionToken = DateTime.UtcNow.AddHours(1);
