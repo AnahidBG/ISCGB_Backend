@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using AutoGestionAPI.Models;
 using AutoGestionAPI.DTOs.Usuarios;
 using AutoGestionAPI.Services;
+using AutoGestionAPI.DTOs.Contrasena;
 
 namespace AutoGestionAPI.Controllers
 {
@@ -117,11 +118,6 @@ namespace AutoGestionAPI.Controllers
             return Ok(new { mensaje = "Usuario creado exitosamente. Se envió un correo para configurar la contraseña." });
         }
 
-        public class EstablecerPasswordDto
-        {
-            public string Token { get; set; } = string.Empty;
-            public string NuevaPassword { get; set; } = string.Empty;
-        }
         [AllowAnonymous]
         [HttpPost("establecer-password")]
         public async Task<IActionResult> EstablecerPassword([FromBody] EstablecerPasswordDto dto)
