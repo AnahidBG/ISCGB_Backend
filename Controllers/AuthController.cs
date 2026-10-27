@@ -10,6 +10,9 @@ using AutoGestionAPI.DTOs.Contrasena;
 using AutoGestionAPI.Models;
 using AutoGestionAPI.Services;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Cryptography;
+using Microsoft.Extensions.Logging;
+
 
 namespace AutoGestionAPI.Controllers
 {
@@ -19,14 +22,15 @@ namespace AutoGestionAPI.Controllers
     {
         private readonly TuDbContext _context;
         private readonly IConfiguration _configuration;
-
         private readonly IEmailService _emailService;
+        private readonly ILogger<AuthController> _logger;
 
-        public AuthController(TuDbContext context, IConfiguration configuration, IEmailService emailService)
+        public AuthController(TuDbContext context, IConfiguration configuration, IEmailService emailService, ILogger<AuthController> logger)
         {
             _context = context;
             _configuration = configuration;
             _emailService = emailService;
+            _logger = logger;
         }
 
         // Endpoint 1 para el recupero de contraseña: Recibe la solicitud del DNI desde la pantalla de Angular
@@ -55,43 +59,19 @@ namespace AutoGestionAPI.Controllers
 
             try
             {
-                // URL de la app en Angular que abre la pantalla para colocar la nueva clave
+                // URL de la app en Angular que abre la pantalla para colocar la nueva clave -DEBE MODIFICARSE CUANDO LO LARGUEMOS
                 string urlRecuperacion = $"http://localhost:4200/restablecer-password?token={tokenRecuperacion}";
                 await _emailService.EnviarLinkConfiguracionAsync(usuario.Email, usuario.Nombre, urlRecuperacion);
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { message = "Error al intentar enviar el correo de recuperación.", error = ex.Message });
+                _logger.LogError(
+                    ex,
+                    "Falló el envío del correo de recuperación de contraseña."
+                );
             }
 
             return Ok(new { message = "Si el DNI existe en el sistema, se enviará un correo con instrucciones." });
-        }
-
-        // Endpoint 2: Recibe la clave nueva y la actualiza en la BD
-        [HttpPost("establecer-password")]
-        [AllowAnonymous]
-        public async Task<IActionResult> EstablecerPassword([FromBody] EstablecerPasswordDto dto)
-        {
-            if (string.IsNullOrWhiteSpace(dto.Token) || string.IsNullOrWhiteSpace(dto.NuevaPassword))
-                return BadRequest(new { message = "El token y la nueva contraseña son obligatorios." });
-
-            var usuario = await _context.Usuarios
-                .FirstOrDefaultAsync(u => u.TokenRecuperacion == dto.Token);
-
-            if (usuario == null)
-                return BadRequest(new { message = "El enlace es inválido." });
-
-            if (usuario.ExpiracionToken < DateTime.UtcNow)
-                return BadRequest(new { message = "El enlace ha expirado. Solicite uno nuevo." });
-
-            // Actualizamos la contraseña con BCrypt y limpiamos los tokens consumidos
-            usuario.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NuevaPassword);
-            usuario.TokenRecuperacion = null;
-            usuario.ExpiracionToken = null;
-
-            await _context.SaveChangesAsync();
-
-            return Ok(new { message = "Contraseña configurada exitosamente. Ya puede iniciar sesión." });
         }
 
 

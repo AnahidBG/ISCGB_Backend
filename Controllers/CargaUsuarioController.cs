@@ -122,7 +122,10 @@ namespace AutoGestionAPI.Controllers
         [HttpPost("establecer-password")]
         public async Task<IActionResult> EstablecerPassword([FromBody] EstablecerPasswordDto dto)
         {
-            var usuario = await _context.Usuarios
+            if (string.IsNullOrWhiteSpace(dto.Token) || string.IsNullOrWhiteSpace(dto.NuevaPassword))
+                return BadRequest(new { message = "El token y la nueva contraseña son obligatorios." });
+
+            Usuario? usuario = await _context.Usuarios
                 .FirstOrDefaultAsync(u => u.TokenRecuperacion == dto.Token);
 
             if (usuario == null)
@@ -131,10 +134,8 @@ namespace AutoGestionAPI.Controllers
             if (usuario.ExpiracionToken < DateTime.UtcNow)
                 return BadRequest("El enlace ha expirado. Solicite uno nuevo.");
 
-
+            // Actualizamos la contraseña con BCrypt y limpiamos los tokens consumidos
             usuario.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NuevaPassword);
-
-
             usuario.TokenRecuperacion = null;
             usuario.ExpiracionToken = null;
 
@@ -142,7 +143,6 @@ namespace AutoGestionAPI.Controllers
 
             return Ok(new { mensaje = "Contraseña configurada exitosamente. Ya puede iniciar sesión." });
         }
-
 
         [HttpPut("modificar/{id}")]
         [Authorize(Roles = "Director,Secretario")]
