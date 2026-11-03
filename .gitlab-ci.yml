@@ -1,0 +1,9 @@
+stages:
+  - build
+
+build_backend:
+  stage: build
+  script:
+    - docker build -t iscgb-backend:latest .
+  only:
+    - main
