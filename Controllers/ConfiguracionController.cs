@@ -21,7 +21,7 @@ namespace AutoGestionAPI.Controllers
         [HttpGet("frecuencia-notificaciones")]
         public async Task<IActionResult> ObtenerFrecuencia()
         {
-            var config = await _context.ConfiguracionesSistema.FirstOrDefaultAsync();
+            ConfiguracionSistema? config = await _context.ConfiguracionesSistema.FirstOrDefaultAsync();
 
             int dias = config?.FrecuenciaNotificacionDias ?? 7;
 
@@ -35,7 +35,7 @@ namespace AutoGestionAPI.Controllers
             if (dto.DiasFrecuencia <= 0)
                 return BadRequest(new { message = "La frecuencia debe ser mayor a 0 días." });
 
-            var config = await _context.ConfiguracionesSistema.FirstOrDefaultAsync();
+            ConfiguracionSistema? config = await _context.ConfiguracionesSistema.FirstOrDefaultAsync();
 
             if (config == null)
             {
@@ -59,7 +59,7 @@ namespace AutoGestionAPI.Controllers
             string? usuarioIdClaim = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
             if (!int.TryParse(usuarioIdClaim, out int idUsuario)) return Unauthorized();
 
-            var docente = await _context.Docentes.FirstOrDefaultAsync(d => d.IdUsuario == idUsuario);
+            Docente? docente = await _context.Docentes.FirstOrDefaultAsync(d => d.IdUsuario == idUsuario);
             if (docente == null) return NotFound(new { message = "Docente no encontrado." });
 
             // 2. Buscamos las mesas donde fue asignado y el estado sigue siendo "Pendiente"
@@ -108,7 +108,7 @@ namespace AutoGestionAPI.Controllers
         public async Task<IActionResult> OcultarAlertaRechazo([FromBody] OcultarAlertaDto dto)
         {
             // 1. Buscamos el registro exacto de ese profesor y ese examen
-            var mesa = await _context.MesasExamenes
+            MesaExamen? mesa = await _context.MesasExamenes
                 .FirstOrDefaultAsync(m => m.IdExamen == dto.IdExamen && m.IdDocente == dto.IdDocente);
 
             if (mesa == null)

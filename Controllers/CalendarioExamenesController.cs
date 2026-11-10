@@ -4,11 +4,14 @@ using AutoGestionAPI.Models;
 using AutoGestionAPI.DTOs;
 using Microsoft.AspNetCore.Authorization; // Si utiliza JWT
 using System.Security.Claims;
+using AutoGestionAPI.Seguridad;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace AutoGestionAPI.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize]
     public class ConfiguracionCalendarioController : ControllerBase
     {
         private readonly TuDbContext _context;
@@ -16,6 +19,23 @@ namespace AutoGestionAPI.Controllers
         public ConfiguracionCalendarioController(TuDbContext context)
         {
             _context = context;
+        }
+
+        /// <summary>
+        /// Dirección/Secretaría pueden tocar cualquier examen; un docente solo los
+        /// de materias que dicta (misma regla que al registrar).
+        /// </summary>
+        private async Task<bool> PuedeGestionarExamenAsync(Examene examen)
+        {
+            if (User.EsAdministrativo()) return true;
+            if (!User.IsInRole("Docente")) return false;
+
+            int? idUsuario = User.ObtenerIdUsuario();
+            if (idUsuario == null) return false;
+
+            return await _context.DocenteMateria.AnyAsync(dm =>
+                dm.IdDocenteNavigation.IdUsuario == idUsuario.Value &&
+                dm.IdMateria == examen.IdMateria);
         }
 
         // Si usa JWT, puede descomentar la siguiente línea para restringir el acceso:
@@ -30,7 +50,7 @@ namespace AutoGestionAPI.Controllers
             }
 
             // 2. Buscamos el registro de configuración (asumimos que siempre hay uno principal)
-            var config = await _context.ConfiguracionesSistema.FirstOrDefaultAsync();
+            ConfiguracionSistema? config = await _context.ConfiguracionesSistema.FirstOrDefaultAsync();
 
             if (config == null)
             {
@@ -60,11 +80,11 @@ namespace AutoGestionAPI.Controllers
         private async Task<bool> SuperaLimiteDiarioAsync(DateTime fechaDeseada, int? idExamenIgnorar = null)
         {
             // 1. Obtener el límite configurado (por defecto 2)
-            var config = await _context.ConfiguracionesSistema.FirstOrDefaultAsync();
+            ConfiguracionSistema? config = await _context.ConfiguracionesSistema.FirstOrDefaultAsync();
             int limite = config?.LimiteParcialesDiario ?? 2;
 
             // 2. Contar cuántos exámenes YA existen en esa fecha EXACTA (ignorando la hora)
-            var query = _context.Examenes
+            IQueryable<Examene> query = _context.Examenes
                 .Where(e => e.Fecha.Date == fechaDeseada.Date);
 
             // Si estamos editando, ignoramos el examen actual
@@ -87,7 +107,7 @@ namespace AutoGestionAPI.Controllers
             string? usuarioIdClaim = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
             if (!int.TryParse(usuarioIdClaim, out int idUsuario)) return Unauthorized();
 
-            var docente = await _context.Docentes.FirstOrDefaultAsync(d => d.IdUsuario == idUsuario);
+            Docente? docente = await _context.Docentes.FirstOrDefaultAsync(d => d.IdUsuario == idUsuario);
             if (docente == null) return NotFound(new { message = "Docente no encontrado." });
 
             // 2. MAGIA DE SEGURIDAD: Verificamos en la tabla docente_materia si realmente da esa clase
@@ -108,7 +128,7 @@ namespace AutoGestionAPI.Controllers
             }
 
             // 4. Guardamos el examen (tal como lo tenía)
-            var nuevoExamen = new Examene
+            Examene nuevoExamen = new Examene
             {
                 Fecha = dto.Fecha,
                 IdComision = dto.IdComision,
@@ -129,13 +149,13 @@ namespace AutoGestionAPI.Controllers
         [HttpGet("estado-mes")]
         public async Task<IActionResult> ObtenerEstadoMes(int anio, int mes)
         {
-            var config = await _context.ConfiguracionesSistema.FirstOrDefaultAsync();
+            ConfiguracionSistema? config = await _context.ConfiguracionesSistema.FirstOrDefaultAsync();
             int limite = config?.LimiteParcialesDiario ?? 2;
 
-            var fechaInicioMes = new DateTime(anio, mes, 1);
-            var fechaFinMes = fechaInicioMes.AddMonths(1).AddSeconds(-1);
+            DateTime fechaInicioMes = new DateTime(anio, mes, 1);
+            DateTime fechaFinMes = fechaInicioMes.AddMonths(1).AddSeconds(-1);
 
-            var examenesDelMes = await _context.Examenes
+            List<Examene> examenesDelMes = await _context.Examenes
                 .Where(e => e.Fecha >= fechaInicioMes && e.Fecha <= fechaFinMes)
                 .ToListAsync();
 
@@ -159,11 +179,14 @@ namespace AutoGestionAPI.Controllers
         [HttpPut("modificar/{idExamen}")]
         public async Task<IActionResult> ModificarExamen(int idExamen, [FromBody] ModificarFechaExamenDto dto)
         {
-            var examen = await _context.Examenes.FindAsync(idExamen);
+            Examene? examen = await _context.Examenes.FindAsync(idExamen);
             if (examen == null)
             {
                 return NotFound(new { message = "No se encontró el examen especificado." });
             }
+
+            if (!await PuedeGestionarExamenAsync(examen))
+                return Forbid();
 
             // Validamos la regla de negocio, pasándole el ID del examen actual 
             // para que NO se cuente a sí mismo en el cálculo de la semana.
@@ -186,11 +209,14 @@ namespace AutoGestionAPI.Controllers
         [HttpDelete("eliminar/{idExamen}")]
         public async Task<IActionResult> EliminarExamen(int idExamen)
         {
-            var examen = await _context.Examenes.FindAsync(idExamen);
+            Examene? examen = await _context.Examenes.FindAsync(idExamen);
             if (examen == null)
             {
                 return NotFound(new { message = "No se encontró el examen especificado." });
             }
+
+            if (!await PuedeGestionarExamenAsync(examen))
+                return Forbid();
 
             _context.Examenes.Remove(examen);
             await _context.SaveChangesAsync();
@@ -224,7 +250,7 @@ namespace AutoGestionAPI.Controllers
             }
 
             // 2. Verificamos que este usuario realmente sea un Docente
-            var docente = await _context.Docentes.FirstOrDefaultAsync(d => d.IdUsuario == idUsuario);
+            Docente? docente = await _context.Docentes.FirstOrDefaultAsync(d => d.IdUsuario == idUsuario);
 
             if (docente == null)
             {
@@ -257,7 +283,7 @@ namespace AutoGestionAPI.Controllers
             int mesActual = DateTime.Now.Month;
             int anioActual = DateTime.Now.Year;
 
-            var examenesMes = await _context.Examenes
+            List<ExamenMesDto> examenesMes = await _context.Examenes
                 .Include(e => e.IdMateriaNavigation)
                 .Include(e => e.IdComisionNavigation)    // NUEVO: Traemos los datos de la Comisión
                 .Include(e => e.IdTipoExamenNavigation)  // NUEVO: Traemos los datos del Tipo de Examen
@@ -285,7 +311,7 @@ namespace AutoGestionAPI.Controllers
 
         // --- 3. ENDPOINT PARA ASIGNAR DOCENTE A MESA DE EXAMEN YA CREADA ---
         [HttpPost("asignar-docente")]
-        [Authorize(Roles = "Director,Administrador")]
+        [Authorize(Roles = "Director,Secretario")]
         public async Task<IActionResult> AsignarDocenteAMesa([FromBody] AsignarMesaDto dto)
         {
             // 1. Verificamos que no exista ya una asignación para este examen y este docente
@@ -324,12 +350,12 @@ namespace AutoGestionAPI.Controllers
                 return BadRequest(new { message = "El docente seleccionado no existe." });
             }
 
-            using var transaction = await _context.Database.BeginTransactionAsync();
+            using IDbContextTransaction transaction = await _context.Database.BeginTransactionAsync();
 
             try
             {
                 // Paso A: Insertamos los datos de la fecha y materia en Examenes
-                var nuevaMesa = new Examene
+                Examene nuevaMesa = new Examene
                 {
                     Fecha = dto.Fecha,
                     IdMateria = dto.IdMateria,
@@ -341,7 +367,7 @@ namespace AutoGestionAPI.Controllers
                 await _context.SaveChangesAsync();
 
 
-                var asignacionDocente = new MesaExamen
+                MesaExamen asignacionDocente = new MesaExamen
                 {
                     IdExamen = nuevaMesa.IdExamen,
                     IdDocente = dto.IdDocente,

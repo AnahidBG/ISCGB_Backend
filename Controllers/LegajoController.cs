@@ -4,11 +4,16 @@ using AutoGestionAPI.Models;
 using AutoGestionAPI.DTOs;
 using AutoGestionAPI.Services;
 using Microsoft.AspNetCore.Authorization;
+using AutoGestionAPI.Seguridad;
+using System.Globalization;
+using AutoGestionAPI.DTOs.Legajos;
+using System.Text;
 
 namespace AutoGestionAPI.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
+    [Authorize]
     public class LegajosController : ControllerBase
     {
         private readonly TuDbContext _context;
@@ -26,12 +31,18 @@ namespace AutoGestionAPI.Controllers
         [HttpPost]
         public async Task<IActionResult> SubirDocumento([FromForm] SubirLegajoDto dto)
         {
-            if (dto.Archivo == null || dto.Archivo.Length == 0)
-                return BadRequest(new { message = "No se ha adjuntado ningún archivo." });
+            // Solo se puede subir documentación propia (salvo Dirección/Secretaría)
+            if (!User.PuedeAccederA(dto.IdUsuario))
+                return Forbid();
+
+            // Valida extensión (PDF/JPG/PNG), tamaño máximo y contenido real del archivo
+            string? errorArchivo = ValidadorArchivos.Validar(dto.Archivo, ValidadorArchivos.PdfOImagen);
+            if (errorArchivo != null)
+                return BadRequest(new { message = errorArchivo });
 
 
-            var usuario = await _context.Usuarios.FindAsync(dto.IdUsuario);
-            var tipoDocumento = await _context.TiposDocumentos.FindAsync(dto.IdTipoDoc);
+            Usuario? usuario = await _context.Usuarios.FindAsync(dto.IdUsuario);
+            TiposDocumento? tipoDocumento = await _context.TiposDocumentos.FindAsync(dto.IdTipoDoc);
 
             if (usuario == null || tipoDocumento == null)
                 return NotFound(new { message = "El usuario o el tipo de documento no existen." });
@@ -42,9 +53,11 @@ namespace AutoGestionAPI.Controllers
 
 
             string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-            string extension = Path.GetExtension(dto.Archivo.FileName).ToLower();
+            string extension = ValidadorArchivos.ObtenerExtension(dto.Archivo!);
+            // Código aleatorio al final para que la URL del archivo no se pueda adivinar
+            string codigo = Guid.NewGuid().ToString("N")[..12];
 
-            string nombreArchivoFinal = $"ISCGB_{nombreLimpio}_{tipoDocLimpio}_{timestamp}{extension}";
+            string nombreArchivoFinal = $"ISCGB_{nombreLimpio}_{tipoDocLimpio}_{timestamp}_{codigo}{extension}";
 
 
             string uploadsFolder = Path.Combine(_env.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot"), "uploads", "legajos");
@@ -54,14 +67,14 @@ namespace AutoGestionAPI.Controllers
 
             string filePath = Path.Combine(uploadsFolder, nombreArchivoFinal);
 
-            using (var fileStream = new FileStream(filePath, FileMode.Create))
+            using (FileStream fileStream = new FileStream(filePath, FileMode.Create))
             {
                 await dto.Archivo.CopyToAsync(fileStream);
             }
 
             string rutaRelativa = $"/uploads/legajos/{nombreArchivoFinal}";
 
-            var nuevoLegajo = new Legajo
+            Legajo nuevoLegajo = new Legajo
             {
                 IdUsuario = dto.IdUsuario,
                 IdTipoDoc = dto.IdTipoDoc,
@@ -87,32 +100,17 @@ namespace AutoGestionAPI.Controllers
         //Método para borrar acentos, Ñ, espacios en blanco
         private string LimpiarCadena(string texto)
         {
-            if (string.IsNullOrWhiteSpace(texto)) return string.Empty;
-
-            //Quita acentos (convierte Á a A, ñ a n, etc.)
-            var normalizedString = texto.Normalize(System.Text.NormalizationForm.FormD);
-            var stringBuilder = new System.Text.StringBuilder();
-
-            foreach (var c in normalizedString)
-            {
-                var unicodeCategory = System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c);
-                if (unicodeCategory != System.Globalization.UnicodeCategory.NonSpacingMark)
-                {
-                    stringBuilder.Append(c);
-                }
-            }
-
-
-            return stringBuilder.ToString()
-                .Normalize(System.Text.NormalizationForm.FormC)
-                .Replace(" ", "");
+            return ValidadorArchivos.LimpiarParaNombreArchivo(texto);
         }
 
         // 2. GET: Obtener todos los documentos de un usuario
         [HttpGet("usuario/{idUsuario}")]
         public async Task<IActionResult> GetLegajosPorUsuario(int idUsuario)
         {
-            var usuario = await _context.Usuarios
+            if (!User.PuedeAccederA(idUsuario))
+                return Forbid();
+
+            Usuario? usuario = await _context.Usuarios
                 .Include(u => u.LegajoIdUsuarioNavigations)
                     .ThenInclude(l => l.IdTipoDocNavigation)
                 .Include(u => u.LegajoIdUsuarioNavigations)
@@ -122,7 +120,7 @@ namespace AutoGestionAPI.Controllers
             if (usuario == null)
                 return NotFound(new { message = "No se encontró el usuario." });
 
-            var respuesta = new UsuarioDocumentosDto
+            UsuarioDocumentosDto respuesta = new UsuarioDocumentosDto
             {
                 NombreCompleto = $"{usuario.Nombre} {usuario.Apellido}".Trim(),
 
@@ -159,11 +157,13 @@ namespace AutoGestionAPI.Controllers
             if (legajo == null)
                 return NotFound(new { message = "No se encontró el registro de legajo." });
 
-            var auditorValido = await _context.Usuarios.AnyAsync(u => u.IdUsuario == idUsuarioAuditor);
-            if (!auditorValido)
-                return BadRequest(new { message = "El ID del usuario auditor no es válido." });
+            // El auditor es quien está logueado. El parámetro idUsuarioAuditor se
+            // mantiene para no romper al frontend, pero ya no se usa.
+            int? idAuditor = User.ObtenerIdUsuario();
+            if (idAuditor == null)
+                return Unauthorized();
 
-            legajo.IdUsuarioAuditor = idUsuarioAuditor;
+            legajo.IdUsuarioAuditor = idAuditor.Value;
             legajo.Estado = dto.Estado;
             legajo.Comentario = dto.Comentario;
             legajo.PresentadoFisico = dto.PresentadoFisico;
@@ -231,9 +231,10 @@ namespace AutoGestionAPI.Controllers
         }
         // ENDPOINT QUE TRAE TODOS LOS DOCUMENTOS EN ESTADO PENDIENTE
         [HttpGet("pendientes")]
+        [Authorize(Roles = UsuarioActual.RolesAdministrativos)]
         public async Task<IActionResult> ObtenerLegajosPendientes()
         {
-            var pendientes = await _context.Legajos
+            List<LegajoPendienteDto> pendientes = await _context.Legajos
             .Where(l => l.Estado == "Pendiente")
             .Select(l => new LegajoPendienteDto
             {
@@ -257,13 +258,14 @@ namespace AutoGestionAPI.Controllers
 
         //ENDPOINT QUE TRAE TODOS LOS DOCUMENTOS SUBIDOS POR USUARIO
         [HttpGet("resumen-estado")]
+        [Authorize(Roles = UsuarioActual.RolesAdministrativos)]
         public async Task<IActionResult> ObtenerResumenEstado()
         {
-            var usuarios = await _context.Usuarios
+            List<Usuario> usuarios = await _context.Usuarios
                 .Include(u => u.LegajoIdUsuarioNavigations)
                 .ToListAsync();
 
-            var resumen = usuarios.Select(usuario => new ResumenLegajoDto
+            List<ResumenLegajoDto> resumen = usuarios.Select(usuario => new ResumenLegajoDto
             {
                 IdUsuario = usuario.IdUsuario,
                 NombreCompleto = $"{usuario.Nombre} {usuario.Apellido}",
@@ -286,7 +288,10 @@ namespace AutoGestionAPI.Controllers
         [HttpGet("{idUsuario}/faltantes")]
         public async Task<IActionResult> ObtenerFaltantes(int idUsuario)
         {
-            var faltantes = await _documentacionService.ObtenerDocumentacionFaltanteAsync(idUsuario);
+            if (!User.PuedeAccederA(idUsuario))
+                return Forbid();
+
+            List<DocumentoFaltanteDto> faltantes = await _documentacionService.ObtenerDocumentacionFaltanteAsync(idUsuario);
 
             if (!faltantes.Any())
             {
@@ -297,9 +302,10 @@ namespace AutoGestionAPI.Controllers
         }
 
         [HttpGet("aprobados")]
+        [Authorize(Roles = UsuarioActual.RolesAdministrativos)]
         public async Task<IActionResult> ObtenerLegajosAprobados()
         {
-            var aprobados = await _context.Legajos
+            List<LegajoAprobadoDto> aprobados = await _context.Legajos
                 .Where(l => l.Estado == "Aprobado")
                 .Select(l => new LegajoAprobadoDto
                 {

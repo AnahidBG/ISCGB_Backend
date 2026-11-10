@@ -24,7 +24,7 @@ namespace AutoGestionAPI.Controllers
         [Authorize(Roles = "Director,Secretario")]
         public async Task<IActionResult> ConfigurarSuplencia(int idDocente, [FromBody] GestionarSuplenciaDto dto)
         {
-            var docente = await _context.Docentes
+            Docente? docente = await _context.Docentes
                 .Include(d => d.IdUsuarioNavigation)
                     .ThenInclude(u => u.UsuariosRoles)
                 .FirstOrDefaultAsync(d => d.IdDocente == idDocente);
@@ -60,7 +60,7 @@ namespace AutoGestionAPI.Controllers
                     docente.FechaFinSuplencia = dto.FechaFin ?? DateTime.Now;
                 }
 
-                var usuario = docente.IdUsuarioNavigation;
+                Usuario usuario = docente.IdUsuarioNavigation;
 
 
                 if (usuario.UsuariosRoles.Count == 1 && usuario.UsuariosRoles.Any(r => r.IdRol == 3))
@@ -70,7 +70,7 @@ namespace AutoGestionAPI.Controllers
 
                 else if (usuario.UsuariosRoles.Count > 1)
                 {
-                    var rolDocente = usuario.UsuariosRoles.FirstOrDefault(r => r.IdRol == 3);
+                    UsuariosRole? rolDocente = usuario.UsuariosRoles.FirstOrDefault(r => r.IdRol == 3);
                     if (rolDocente != null)
                     {
                         _context.UsuariosRoles.Remove(rolDocente);

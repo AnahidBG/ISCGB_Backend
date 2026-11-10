@@ -45,7 +45,7 @@ namespace AutoGestionAPI.Controllers
                 return Unauthorized("Token inválido.");
 
 
-            var alumno = await _context.Alumnos.FirstOrDefaultAsync(a => a.IdUsuario == idUsuario);
+            Alumno? alumno = await _context.Alumnos.FirstOrDefaultAsync(a => a.IdUsuario == idUsuario);
             if (alumno == null)
                 return BadRequest("El usuario no es un alumno.");
 
@@ -237,10 +237,11 @@ namespace AutoGestionAPI.Controllers
         }
 
         // Valida los archivos
+        // (extensión .pdf, máximo 10 MB y que el contenido sea realmente un PDF)
         private bool EsPdfValido(IFormFile archivo)
         {
-            long limite = 10 * 1024 * 1024; // 10 MB
-            return archivo != null && archivo.ContentType == "application/pdf" && archivo.Length <= limite && archivo.Length > 0;
+            return AutoGestionAPI.Seguridad.ValidadorArchivos.Validar(
+                archivo, AutoGestionAPI.Seguridad.ValidadorArchivos.SoloPdf) == null;
         }
     }
 }

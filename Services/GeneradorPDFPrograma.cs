@@ -85,7 +85,7 @@ public static class GeneradorPdfPrograma
 
                     // 3. Contenidos
                     col.Item().Text("3. Contenidos").Bold().FontSize(12);
-                    foreach (var unidad in programa.Contenidos)
+                    foreach (Contenido unidad in programa.Contenidos)
                     {
                         col.Item().PaddingTop(5).PaddingBottom(5).Text($"Unidad {unidad.Unidad}. {unidad.TituloUnidad}").SemiBold();
                         col.Item().PaddingBottom(5).Text("Contenido:").Underline();

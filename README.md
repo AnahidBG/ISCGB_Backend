@@ -12,6 +12,38 @@ API REST para el sistema de gestión del Instituto Superior Cura Gabriel Brocher
 - Angular u otro frontend ejecutándose en `http://localhost:4200` (origen
   permitido por CORS).
 
+### Secretos
+
+Para desarrollo **no hace falta configurar nada**: alcanza con `dotnet run`.
+
+- **Clave JWT:** en desarrollo se usa la clave de prueba de
+  `appsettings.Development.json`. Fuera de desarrollo la API no arranca con
+  esa clave.
+- **Correos:** en desarrollo se envían con la contraseña de aplicación de la
+  cuenta de notificaciones que está en `appsettings.Development.json`. Si se
+  borra esa contraseña, los correos no se envían y se muestran en la consola de
+  la API, con el link para crear o restablecer la contraseña.
+
+> Antes de pasar a producción: revocar esa contraseña de aplicación en la
+> cuenta de Google, generar una nueva y cargarla solo como variable de
+> entorno (`Email__Password`).
+
+En producción / Docker se usan variables de entorno: `Jwt__Key` (obligatoria,
+32 caracteres o más), `Email__Password` (y opcionalmente `Email__Usuario`,
+`Frontend__Url`, `ConnectionStrings__DefaultConnection`).
+
+La URL del frontend (CORS y links de los correos) se configura en
+`Frontend:Url` de `appsettings.json`.
+
+### Archivos subidos
+
+`wwwroot/uploads/` está en `.gitignore`: tiene DNI, títulos y justificativos de
+personas reales y no se sube al repositorio.
+
+Los contratos firmados de los alumnos se guardan en `Almacenamiento/contratos/`,
+fuera de `wwwroot`: no se pueden abrir con un link directo, solo por
+`GET /api/ContratosAlumno/{id}/pdf`. Esa carpeta también está en `.gitignore`.
+
 ### Ejecutar
 
 ```bash
@@ -87,7 +119,6 @@ mensaje como texto.
 | Método | Ruta | Uso |
 | --- | --- | --- |
 | `POST` | `/Auth/login` | Iniciar sesión. |
-| `POST` | `/Auth/crear-usuario-prueba` | Crear usuario de prueba. Solo desarrollo. |
 | `POST` | `/UsuariosAdmin/alta` | Crear usuario y enviar enlace para configurar contraseña. |
 | `POST` | `/UsuariosAdmin/establecer-password` | Configurar contraseña con el token recibido por correo. |
 | `PUT` | `/UsuariosAdmin/modificar/{id}` | Modificar datos y roles de un usuario. |
@@ -238,6 +269,19 @@ form.append('analiticoPdf', analiticoPdf);
 ```
 
 Ambos archivos deben ser PDF y pesar como máximo 10 MB.
+
+### Contratos de alumnos
+
+Contratos firmados (por ejemplo, el convenio de la beca) que Dirección o
+Secretaría cargan en el perfil de un alumno, para que el alumno los vea y
+descargue. Todas las rutas requieren JWT.
+
+| Método | Ruta | Rol | Uso |
+| --- | --- | --- | --- |
+| `POST` | `/ContratosAlumno` | Director, Secretario | Cargar un contrato. `FormData` con `idUsuario`, `nombre` (hasta 100 caracteres) y `archivo` (PDF). Responde `{ message, idContrato }`. |
+| `GET` | `/ContratosAlumno/alumno/{idUsuario}` | Director, Secretario | Contratos de un alumno: `[{ idContrato, nombre, fechaCarga }]`, del más nuevo al más viejo. Sin contratos, `[]`. |
+| `GET` | `/ContratosAlumno/mis-contratos` | Alumno | Los mismos datos, del alumno del token. |
+| `GET` | `/ContratosAlumno/{idContrato}/pdf` | Director, Secretario o el alumno dueño | Descargar el PDF. Cualquier otro recibe `403`. |
 
 ### Programas y certificados
 

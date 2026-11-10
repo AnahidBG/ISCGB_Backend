@@ -2,11 +2,15 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using AutoGestionAPI.Models;
 using AutoGestionAPI.DTOs;
+using AutoGestionAPI.Seguridad;
+using Microsoft.AspNetCore.Authorization;
 
 namespace AutoGestionAPI.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    // Devuelve nombres y DNIs de todo el instituto: solo Dirección/Secretaría.
+    [Authorize(Roles = UsuarioActual.RolesAdministrativos)]
     public class BuscadorController : ControllerBase
     {
         private readonly TuDbContext _context;
@@ -25,10 +29,10 @@ namespace AutoGestionAPI.Controllers
                 return Ok(new { data = new List<ResultadoBusquedaDto>() });
             }
 
-            var terminoBusqueda = termino.ToLower();
-            var resultados = new List<ResultadoBusquedaDto>();
+            string terminoBusqueda = termino.ToLower();
+            List<ResultadoBusquedaDto> resultados = new List<ResultadoBusquedaDto>();
 
-            var docentesEncontrados = await _context.Usuarios
+            List<ResultadoBusquedaDto> docentesEncontrados = await _context.Usuarios
 
                 .Where(u => u.Nombre.ToLower().Contains(terminoBusqueda) ||
                             u.Apellido.ToLower().Contains(terminoBusqueda))
@@ -43,7 +47,7 @@ namespace AutoGestionAPI.Controllers
 
             resultados.AddRange(docentesEncontrados);
 
-            var materiasEncontradas = await _context.Materias
+            List<ResultadoBusquedaDto> materiasEncontradas = await _context.Materias
                 .Where(m => m.Nombre.ToLower().Contains(terminoBusqueda))
                 .Select(m => new ResultadoBusquedaDto
                 {
@@ -56,7 +60,7 @@ namespace AutoGestionAPI.Controllers
 
             resultados.AddRange(materiasEncontradas);
 
-            var documentosEncontrados = await _context.Justificativos
+            List<ResultadoBusquedaDto> documentosEncontrados = await _context.Justificativos
                 .Where(j => j.TipoInasistencia.ToLower().Contains(terminoBusqueda) ||
                             (j.NotaAdicional != null && j.NotaAdicional.ToLower().Contains(terminoBusqueda)))
                 .Select(j => new ResultadoBusquedaDto

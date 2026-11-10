@@ -5,11 +5,15 @@ using System.IO;
 using System;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authorization;
+using AutoGestionAPI.Seguridad;
+using System.Text.RegularExpressions;
 
 namespace AutoGestionAPI.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
+    [Authorize]
     public class JustificativosController : ControllerBase
     {
         private readonly TuDbContext _context;
@@ -25,15 +29,23 @@ namespace AutoGestionAPI.Controllers
             //Si no es por causas personales, el PDF es obligatorio
             bool esCausaPersonal = dto.TipoInasistencia == "Causas Personales";
 
-            if (!esCausaPersonal)
+            // Solo se pueden cargar justificativos propios (salvo Dirección/Secretaría)
+            if (!User.PuedeAccederA(dto.IdUsuario))
+                return Forbid();
+
+            if (!esCausaPersonal && dto.DocumentoPdf == null)
             {
-                if (dto.DocumentoPdf == null || dto.DocumentoPdf.ContentType != "application/pdf")
-                {
-                    return BadRequest(new { message = "Debes adjuntar en formato PDF" });
-                }
+                return BadRequest(new { message = "Debes adjuntar en formato PDF" });
             }
 
-            var usuario = await _context.Usuarios.FindAsync(dto.IdUsuario);
+            if (dto.DocumentoPdf != null)
+            {
+                string? errorArchivo = ValidadorArchivos.Validar(dto.DocumentoPdf, ValidadorArchivos.SoloPdf);
+                if (errorArchivo != null)
+                    return BadRequest(new { message = errorArchivo });
+            }
+
+            Usuario? usuario = await _context.Usuarios.FindAsync(dto.IdUsuario);
             if (usuario == null) return NotFound(new { message = "Usuario no encontrado" });
 
             string? rutaGuardadoFinal = null;
@@ -41,19 +53,20 @@ namespace AutoGestionAPI.Controllers
             //Formatear nombre del archivo y guardarlo
             if (dto.DocumentoPdf != null)
             {
-                string nombreOriginal = Path.GetFileNameWithoutExtension(dto.DocumentoPdf.FileName).Replace(" ", "_");
-                string extension = Path.GetExtension(dto.DocumentoPdf.FileName); // Debería ser .pdf
-
-                // Formato: ISCGB_NombreyApellido_NombreDocumento
+                // Formato: ISCGB_NombreyApellido_Justificativo_fecha_código.pdf
+                // El nombre se limpia (solo letras y números) para que no se pueda
+                // armar una ruta rara, y el código aleatorio hace que la URL no se pueda adivinar.
+                string nombreLimpio = Regex.Replace($"{usuario.Nombre}{usuario.Apellido}", @"[^\p{L}\p{N}]", "");
                 string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-                string nombreArchivoFinal = $"ISCGB_{usuario.Nombre}{usuario.Apellido}_Justificativo_{timestamp}{extension}";
+                string codigo = Guid.NewGuid().ToString("N")[..12];
+                string nombreArchivoFinal = $"ISCGB_{nombreLimpio}_Justificativo_{timestamp}_{codigo}.pdf";
 
-                var carpetaDestino = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads", "justificativos");
+                string carpetaDestino = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads", "justificativos");
                 if (!Directory.Exists(carpetaDestino)) Directory.CreateDirectory(carpetaDestino);
 
                 string rutaFisica = Path.Combine(carpetaDestino, nombreArchivoFinal);
 
-                using (var stream = new FileStream(rutaFisica, FileMode.Create))
+                using (FileStream stream = new FileStream(rutaFisica, FileMode.Create))
                 {
                     await dto.DocumentoPdf.CopyToAsync(stream);
                 }
@@ -61,7 +74,7 @@ namespace AutoGestionAPI.Controllers
                 rutaGuardadoFinal = $"/uploads/justificativos/{nombreArchivoFinal}";
             }
 
-            var nuevoJustificativo = new Justificativo
+            Justificativo nuevoJustificativo = new Justificativo
             {
                 IdUsuario = dto.IdUsuario,
                 TipoInasistencia = dto.TipoInasistencia,
@@ -85,25 +98,24 @@ namespace AutoGestionAPI.Controllers
 
         // Endpoint para auditar justificativo
         [HttpPut("auditar/{idJustificativo}")]
+        [Authorize(Roles = UsuarioActual.RolesAdministrativos)]
         public async Task<IActionResult> AuditarJustificativo(int idJustificativo, [FromBody] AuditarJustificativoDto dto)
         {
 
-            var justificativo = await _context.Justificativos.FindAsync(idJustificativo);
+            Justificativo? justificativo = await _context.Justificativos.FindAsync(idJustificativo);
 
             if (justificativo == null)
             {
                 return NotFound(new { message = "Justificativo no encontrado" });
             }
 
-            var auditor = await _context.Usuarios.FindAsync(dto.IdUsuarioAuditor);
-            if (auditor == null)
-            {
-                return BadRequest(new { message = "El usuario auditor no existe" });
-            }
+            // El auditor es quien está logueado (no se confía en el id que manda el body)
+            int? idAuditor = User.ObtenerIdUsuario();
+            if (idAuditor == null) return Unauthorized();
 
 
             justificativo.Estado = dto.Estado;
-            justificativo.IdUsuarioAuditor = dto.IdUsuarioAuditor;
+            justificativo.IdUsuarioAuditor = idAuditor.Value;
 
             // (Consultar) Si es necesario agregar una fecha de auditoría:
             // justificativo.FechaAuditoria = DateTime.Now;
@@ -121,9 +133,10 @@ namespace AutoGestionAPI.Controllers
 
         //Endpoint que trae todos los justificativos pendientes.
         [HttpGet("pendientes")]
+        [Authorize(Roles = UsuarioActual.RolesAdministrativos)]
         public async Task<IActionResult> ObtenerJustificativosPendientes()
         {
-            var pendientes = await _context.Justificativos
+            List<JustificativoPendienteDto> pendientes = await _context.Justificativos
                 .Where(j => j.Estado == "Pendiente")
                 .Select(j => new JustificativoPendienteDto
                 {
@@ -143,8 +156,10 @@ namespace AutoGestionAPI.Controllers
         [HttpGet("{idUsuario}/justificativos")]
         public async Task<IActionResult> ObtenerJustificativosDeUsuario(int idUsuario)
         {
+            if (!User.PuedeAccederA(idUsuario))
+                return Forbid();
 
-            var usuario = await _context.Usuarios.FirstOrDefaultAsync(u => u.IdUsuario == idUsuario);
+            Usuario? usuario = await _context.Usuarios.FirstOrDefaultAsync(u => u.IdUsuario == idUsuario);
 
             if (usuario == null)
             {
@@ -155,7 +170,7 @@ namespace AutoGestionAPI.Controllers
             string nombreCompleto = $"{usuario.Nombre} {usuario.Apellido}".Trim();
 
 
-            var justificativos = await _context.Justificativos
+            List<JustificativoResponseDto> justificativos = await _context.Justificativos
                 .Where(j => j.IdUsuario == idUsuario)
                 .Select(j => new JustificativoResponseDto
                 {
@@ -192,9 +207,10 @@ namespace AutoGestionAPI.Controllers
         }
 
         [HttpGet("todos")]
+        [Authorize(Roles = UsuarioActual.RolesAdministrativos)]
         public async Task<IActionResult> ObtenerTodosLosJustificativos()
         {
-            var justificativos = await _context.Justificativos
+            List<JustificativoGeneralDto> justificativos = await _context.Justificativos
                 .Join(_context.Usuarios,
                     j => j.IdUsuario,
                     u => u.IdUsuario,

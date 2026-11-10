@@ -72,6 +72,7 @@ namespace AutoGestionAPI.Controllers
         }
 
         [HttpGet("docentes-disponibles")]
+        [Authorize(Roles = "Director,Secretario")]
         public async Task<IActionResult> ObtenerDocentes()
         {
             var docentes = await _context.Docentes
@@ -106,7 +107,7 @@ namespace AutoGestionAPI.Controllers
         [Authorize(Roles = "Director,Secretario")]
         public async Task<IActionResult> AsignarMateriaADocente([FromBody] AsignarMateriaDto dto)
         {
-            var asignacionExiste = await _context.DocenteMateria
+            bool asignacionExiste = await _context.DocenteMateria
                 .AnyAsync(dm => dm.IdDocente == dto.IdDocente &&
                                 dm.IdMateria == dto.IdMateria &&
                                 dm.IdComision == dto.IdComision);
@@ -116,7 +117,7 @@ namespace AutoGestionAPI.Controllers
                 return BadRequest(new { message = "El docente ya tiene asignada esta materia en esta comisión." });
             }
 
-            var nuevaAsignacion = new DocenteMaterium
+            DocenteMaterium nuevaAsignacion = new DocenteMaterium
             {
                 IdDocente = dto.IdDocente,
                 IdMateria = dto.IdMateria,
@@ -138,7 +139,7 @@ namespace AutoGestionAPI.Controllers
                 return BadRequest(new { message = "El nombre de la materia es obligatorio." });
             }
 
-            var materiaExiste = await _context.Materias
+            bool materiaExiste = await _context.Materias
                 .AnyAsync(m => m.Nombre.ToLower() == dto.NombreMateria.ToLower());
 
             if (materiaExiste)
@@ -206,6 +207,7 @@ namespace AutoGestionAPI.Controllers
         }
 
         [HttpGet("alumnos-disponibles")]
+        [Authorize(Roles = "Director,Secretario")]
         public async Task<IActionResult> ObtenerAlumnos()
         {
             var alumnos = await _context.Alumnos

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
@@ -36,6 +37,7 @@ namespace AutoGestionAPI.Controllers
         // Endpoint 1 para el recupero de contraseña: Recibe la solicitud del DNI desde la pantalla de Angular
         [HttpPost("recuperar-contrasena")]
         [AllowAnonymous]
+        [EnableRateLimiting("auth")]
         public async Task<IActionResult> SolicitarRecuperacion([FromBody] SolicitarRecuperacionDto dto)
         {
             if (string.IsNullOrWhiteSpace(dto.Dni))
@@ -59,8 +61,10 @@ namespace AutoGestionAPI.Controllers
 
             try
             {
-                // URL de la app en Angular que abre la pantalla para colocar la nueva clave -DEBE MODIFICARSE CUANDO LO LARGUEMOS
-                string urlRecuperacion = $"http://localhost:4200/restablecer-password?token={tokenRecuperacion}";
+                // Pantalla de Angular para elegir la nueva clave. La URL base sale de
+                // appsettings ("Frontend:Url").
+                string urlFrontend = _configuration["Frontend:Url"] ?? "http://localhost:4200";
+                string urlRecuperacion = $"{urlFrontend}/restablecer-password?token={tokenRecuperacion}";
                 await _emailService.EnviarLinkConfiguracionAsync(usuario.Email, usuario.Nombre, urlRecuperacion);
             }
             catch (Exception ex)
@@ -77,6 +81,8 @@ namespace AutoGestionAPI.Controllers
 
         //Función del login
         [HttpPost("login")]
+        [AllowAnonymous]
+        [EnableRateLimiting("auth")]
         public IActionResult Login([FromBody] LoginRequestDto request)
         {
             Usuario? usuario = _context.Usuarios
@@ -86,9 +92,13 @@ namespace AutoGestionAPI.Controllers
                 .Include(u => u.Docentes)
                 .FirstOrDefault(u => u.Dni == request.Dni);
 
+            // Mismo mensaje para "no existe", "inactivo" y "contraseña incorrecta":
+            // así no se puede averiguar qué DNIs están registrados.
+            const string mensajeCredencialesInvalidas = "DNI o contraseña incorrectos.";
+
             if (usuario == null || usuario.EstadoUsuario == false)
             {
-                return Unauthorized(new { message = "DNI no encontrado o cuenta inactiva." });
+                return Unauthorized(new { message = mensajeCredencialesInvalidas });
             }
 
             if (usuario.PasswordHash == "PENDIENTE_CONFIGURACION")
@@ -101,10 +111,10 @@ namespace AutoGestionAPI.Controllers
 
             if (!isPasswordValid)
             {
-                return Unauthorized(new { message = "Contraseña incorrecta." });
+                return Unauthorized(new { message = mensajeCredencialesInvalidas });
             }
 
-            var token = GenerarJwtToken(usuario);
+            string token = GenerarJwtToken(usuario);
 
             var listaRoles = usuario.UsuariosRoles.Select(ur => new
             {
@@ -137,44 +147,20 @@ namespace AutoGestionAPI.Controllers
             });
         }
 
-        //Función de crear un usuario, esto es de prueba. No quedaría de esta forma.
-
-        [HttpPost("crear-usuario-prueba")]
-        public IActionResult CrearUsuarioPrueba([FromBody] LoginRequestDto request)
-        {
-            Usuario nuevoUsuario = new Usuario
-            {
-                Dni = request.Dni,
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
-                Email = "prueba@test.com",
-                EstadoUsuario = true,
-                UsuariosRoles = new List<UsuariosRole>
-                {
-                    new UsuariosRole { IdRol = 1 }
-                }
-
-            };
-
-            _context.Usuarios.Add(nuevoUsuario);
-            _context.SaveChanges();
-
-            return Ok(new { message = "Usuario de prueba creado con éxito." });
-        }
-
         private string GenerarJwtToken(Usuario usuario)
         {
-            var jwtSettings = _configuration.GetSection("Jwt");
-            var key = Encoding.ASCII.GetBytes(jwtSettings["Key"]!);
+            IConfigurationSection jwtSettings = _configuration.GetSection("Jwt");
+            byte[] key = Encoding.ASCII.GetBytes(jwtSettings["Key"]!);
 
 
-            var claims = new List<Claim>
+            List<Claim> claims = new List<Claim>
             {
                 new Claim(ClaimTypes.NameIdentifier, usuario.IdUsuario.ToString()),
                 new Claim("DNI", usuario.Dni ?? "")
             };
 
 
-            foreach (var rol in usuario.UsuariosRoles)
+            foreach (UsuariosRole rol in usuario.UsuariosRoles)
             {
                 // Verificamos que el rol no sea nulo
                 if (!string.IsNullOrEmpty(rol.IdRolNavigation?.Rol))
@@ -184,15 +170,15 @@ namespace AutoGestionAPI.Controllers
                 }
             }
 
-            var tokenDescriptor = new SecurityTokenDescriptor
+            SecurityTokenDescriptor tokenDescriptor = new SecurityTokenDescriptor
             {
                 Subject = new ClaimsIdentity(claims),
                 Expires = DateTime.UtcNow.AddHours(2),
                 SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
             };
 
-            var tokenHandler = new JwtSecurityTokenHandler();
-            var token = tokenHandler.CreateToken(tokenDescriptor);
+            JwtSecurityTokenHandler tokenHandler = new JwtSecurityTokenHandler();
+            SecurityToken token = tokenHandler.CreateToken(tokenDescriptor);
 
             return tokenHandler.WriteToken(token);
         }

@@ -16,7 +16,7 @@ namespace AutoGestionAPI.Services
         public async Task<List<DocumentoFaltanteDto>> ObtenerDocumentacionFaltanteAsync(int idUsuario)
         {
             // 1. Obtener los IDs de los roles asignados a este usuario
-            var rolesUsuarioIds = await _context.UsuariosRoles // Ajustá el nombre si tu DbSet se llama distinto (ej: UsuariosRoles)
+            List<int> rolesUsuarioIds = await _context.UsuariosRoles
                 .Where(ur => ur.IdUsuario == idUsuario)
                 .Select(ur => ur.IdRol)
                 .ToListAsync();
@@ -27,31 +27,60 @@ namespace AutoGestionAPI.Services
             }
 
             // 2. Obtener qué tipos de documentos se exigen para los roles del usuario
-            var documentosRequeridos = await _context.RolesTiposDocumentos
-                // CORRECTO: Incluimos solo el objeto de navegación (la tabla relacionada entera)
+            List<RolesTiposDocumento> documentosRequeridos = await _context.RolesTiposDocumentos
                 .Include(rtd => rtd.IdTipoDocNavigation)
                 .Where(rtd => rolesUsuarioIds.Contains(rtd.IdRol))
                 .ToListAsync();
 
-            // 3. Obtener los IDs de los documentos que el usuario YA subió y NO están rechazados
-            var documentosEntregadosIds = await _context.Legajos
-                .Where(l => l.IdUsuario == idUsuario && l.Estado != "Rechazado")
-                .Select(l => l.IdTipoDoc)
+            // 3. Los documentos que el usuario ya subió
+            List<Legajo> legajos = await _context.Legajos
+                .Where(l => l.IdUsuario == idUsuario)
                 .ToListAsync();
 
-            // 4. Filtrar: De los requeridos, sacar los que ya entregó
-            var documentosFaltantes = documentosRequeridos
-                .Where(req => !documentosEntregadosIds.Contains(req.IdTipoDoc)) // Cruzamos por el ID
-                .Select(req => new DocumentoFaltanteDto
+            // 4. De los requeridos, los que todavía no tiene vigentes
+            return CalcularFaltantes(documentosRequeridos, legajos, DateTime.Now)
+                .Select(grupo => new DocumentoFaltanteDto
                 {
-                    IdTipoDocumento = req.IdTipoDoc,
-                    // ACÁ SÍ accedemos a la propiedad de texto, porque el objeto ya vino incluido en el paso 2
-                    NombreDocumento = req.IdTipoDocNavigation.NombreDocumento,
-                    EsObligatorio = req.Obligatorio
+                    IdTipoDocumento = grupo.Key,
+                    NombreDocumento = grupo.First().IdTipoDocNavigation.NombreDocumento,
+                    // Si tiene varios roles, alcanza con que uno lo exija como obligatorio
+                    EsObligatorio = grupo.Any(r => r.Obligatorio)
                 })
                 .ToList();
+        }
 
-            return documentosFaltantes;
+        /// <summary>
+        /// Regla única de "documento faltante", compartida por la pantalla de
+        /// faltantes y por el aviso automático por mail.
+        ///
+        /// Un documento cuenta como entregado si fue subido y no está rechazado.
+        /// Si es ANUAL (Apto Médico, Ley 9680, etc.), además tiene que haberse
+        /// subido en el año en curso: el del año anterior ya no vale.
+        ///
+        /// Devuelve las reglas faltantes agrupadas por tipo de documento (un mismo
+        /// documento puede exigirse a más de un rol del usuario).
+        /// </summary>
+        public static List<IGrouping<int, RolesTiposDocumento>> CalcularFaltantes(
+            IEnumerable<RolesTiposDocumento> reglas, IEnumerable<Legajo> legajos, DateTime hoy)
+        {
+            List<RolesTiposDocumento> listaReglas = reglas.ToList();
+
+            // Si para alguno de sus roles el documento es anual, se lo trata como anual
+            HashSet<int> tiposAnuales = listaReglas
+                .Where(r => r.Anual)
+                .Select(r => r.IdTipoDoc)
+                .ToHashSet();
+
+            HashSet<int> tiposVigentes = legajos
+                .Where(l => l.Estado != "Rechazado")
+                .Where(l => !tiposAnuales.Contains(l.IdTipoDoc) || l.FechaCarga.Year == hoy.Year)
+                .Select(l => l.IdTipoDoc)
+                .ToHashSet();
+
+            return listaReglas
+                .Where(r => !tiposVigentes.Contains(r.IdTipoDoc))
+                .GroupBy(r => r.IdTipoDoc)
+                .ToList();
         }
     }
 }

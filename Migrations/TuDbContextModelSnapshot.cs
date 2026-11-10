@@ -195,6 +195,49 @@ namespace AutoGestionAPI.Migrations
                     b.ToTable("contenidos", (string)null);
                 });
 
+            modelBuilder.Entity("AutoGestionAPI.Models.ContratoAlumno", b =>
+                {
+                    b.Property<int>("IdContrato")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasColumnName("id_contrato");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("IdContrato"));
+
+                    b.Property<DateTime>("FechaCarga")
+                        .HasColumnType("datetime")
+                        .HasColumnName("fecha_carga");
+
+                    b.Property<int>("IdUsuario")
+                        .HasColumnType("int")
+                        .HasColumnName("id_usuario");
+
+                    b.Property<int>("IdUsuarioCarga")
+                        .HasColumnType("int")
+                        .HasColumnName("id_usuario_carga");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)")
+                        .HasColumnName("nombre");
+
+                    b.Property<string>("RutaArchivo")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(500)")
+                        .HasColumnName("ruta_archivo");
+
+                    b.HasKey("IdContrato");
+
+                    b.HasIndex("IdUsuario");
+
+                    b.HasIndex("IdUsuarioCarga");
+
+                    b.ToTable("contratos_alumno", (string)null);
+                });
+
             modelBuilder.Entity("AutoGestionAPI.Models.Correlatividade", b =>
                 {
                     b.Property<int>("Id")
@@ -1343,6 +1386,25 @@ namespace AutoGestionAPI.Migrations
                         .HasConstraintName("FK_Contenidos_Programa");
 
                     b.Navigation("IdProgramaNavigation");
+                });
+
+            modelBuilder.Entity("AutoGestionAPI.Models.ContratoAlumno", b =>
+                {
+                    b.HasOne("AutoGestionAPI.Models.Usuario", "IdUsuarioNavigation")
+                        .WithMany()
+                        .HasForeignKey("IdUsuario")
+                        .IsRequired()
+                        .HasConstraintName("FK_ContratosAlumno_Usuario");
+
+                    b.HasOne("AutoGestionAPI.Models.Usuario", "IdUsuarioCargaNavigation")
+                        .WithMany()
+                        .HasForeignKey("IdUsuarioCarga")
+                        .IsRequired()
+                        .HasConstraintName("FK_ContratosAlumno_UsuarioCarga");
+
+                    b.Navigation("IdUsuarioCargaNavigation");
+
+                    b.Navigation("IdUsuarioNavigation");
                 });
 
             modelBuilder.Entity("AutoGestionAPI.Models.Correlatividade", b =>

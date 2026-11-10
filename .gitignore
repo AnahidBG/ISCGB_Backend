@@ -480,3 +480,10 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Archivos subidos por los usuarios (DNI, títulos, justificativos...).
+# Son datos personales: nunca se suben al repositorio.
+[Ww]ww[Rr]oot/uploads/
+
+# Contratos firmados de alumnos (documentos personales, fuera de wwwroot)
+Almacenamiento/
