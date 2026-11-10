@@ -323,6 +323,12 @@ public partial class TuDbContext : DbContext
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_Examenes_TipoExamen");
 
+            entity.Property(e => e.IdDocenteCreador).HasColumnName("id_docente_creador");
+            entity.HasOne(d => d.IdDocenteCreadorNavigation).WithMany()
+                .HasForeignKey(d => d.IdDocenteCreador)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_Examenes_DocenteCreador");
+
             modelBuilder.Entity<MesaExamen>(entity =>
         {
 

@@ -130,6 +130,13 @@ namespace AutoGestionAPI.Controllers
             return Ok(new { message = "Materia asignada correctamente al docente en la comisión indicada." });
         }
 
+        // Años válidos para el desplegable "Curso" al cargar una materia
+        [HttpGet("cursos")]
+        public IActionResult ObtenerCursos()
+        {
+            return Ok(CursosMateria.Validos);
+        }
+
         [HttpPost("cargar-materia")]
         [Authorize(Roles = "Director,Secretario")]
         public async Task<IActionResult> AgregarMateria([FromBody] CargarMateriaDto dto)
@@ -137,6 +144,14 @@ namespace AutoGestionAPI.Controllers
             if (string.IsNullOrWhiteSpace(dto.NombreMateria))
             {
                 return BadRequest(new { message = "El nombre de la materia es obligatorio." });
+            }
+
+            // El año tiene que ser uno de los válidos y se guarda siempre igual
+            // ("1° año" → "Primer Año"): de eso depende el límite de exámenes por día.
+            string? curso = CursosMateria.Normalizar(dto.Curso);
+            if (curso == null)
+            {
+                return BadRequest(new { message = $"El curso no es válido. Opciones: {string.Join(", ", CursosMateria.Validos)}." });
             }
 
             bool materiaExiste = await _context.Materias
@@ -151,7 +166,7 @@ namespace AutoGestionAPI.Controllers
             {
                 Nombre = dto.NombreMateria,
                 Carrera = dto.Carrera,
-                Curso = dto.Curso
+                Curso = curso
             };
 
             _context.Materias.Add(nuevaMateria);

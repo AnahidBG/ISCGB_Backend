@@ -5,6 +5,7 @@ using AutoGestionAPI.DTOs;
 using Microsoft.AspNetCore.Authorization; // Si utiliza JWT
 using System.Security.Claims;
 using AutoGestionAPI.Seguridad;
+using AutoGestionAPI.Services;
 using Microsoft.EntityFrameworkCore.Storage;
 
 namespace AutoGestionAPI.Controllers
@@ -15,27 +16,109 @@ namespace AutoGestionAPI.Controllers
     public class ConfiguracionCalendarioController : ControllerBase
     {
         private readonly TuDbContext _context;
+        private readonly IEmailService _emailService;
+        private readonly ILogger<ConfiguracionCalendarioController> _logger;
 
-        public ConfiguracionCalendarioController(TuDbContext context)
+        public ConfiguracionCalendarioController(
+            TuDbContext context,
+            IEmailService emailService,
+            ILogger<ConfiguracionCalendarioController> logger)
         {
             _context = context;
+            _emailService = emailService;
+            _logger = logger;
+        }
+
+        // Estados de la convocatoria de un docente a una mesa (tabla mesa_examen)
+        private const string MesaPendiente = "Pendiente";
+        private const string MesaAceptada = "Aceptada";
+
+        /// <summary>
+        /// Exámenes que OCUPAN un lugar del límite diario: los que cargan los docentes
+        /// y las mesas con alguna convocatoria pendiente o aceptada. Una mesa en la que
+        /// todos los convocados rechazaron no ocupa lugar.
+        /// </summary>
+        private IQueryable<Examene> ExamenesQueOcupanElDia()
+        {
+            return _context.Examenes.Where(e =>
+                !_context.MesasExamenes.Any(m => m.IdExamen == e.IdExamen) ||
+                _context.MesasExamenes.Any(m => m.IdExamen == e.IdExamen &&
+                    (m.EstadoConfirmacion == MesaPendiente || m.EstadoConfirmacion == MesaAceptada)));
         }
 
         /// <summary>
-        /// Dirección/Secretaría pueden tocar cualquier examen; un docente solo los
-        /// de materias que dicta (misma regla que al registrar).
+        /// Exámenes que se MUESTRAN en el calendario: los que cargan los docentes y
+        /// las mesas recién cuando un docente convocado las aceptó.
+        /// </summary>
+        private IQueryable<Examene> ExamenesVisiblesEnCalendario()
+        {
+            return _context.Examenes.Where(e =>
+                !_context.MesasExamenes.Any(m => m.IdExamen == e.IdExamen) ||
+                _context.MesasExamenes.Any(m => m.IdExamen == e.IdExamen && m.EstadoConfirmacion == MesaAceptada));
+        }
+
+        /// <summary>
+        /// Le avisa por mail al docente que lo convocaron a una mesa. Si el mail falla,
+        /// la convocatoria igual queda registrada (el docente la ve en el sistema).
+        /// </summary>
+        private async Task AvisarConvocatoriaAsync(int idDocente, int idExamen)
+        {
+            try
+            {
+                var datos = await _context.Examenes
+                    .Where(e => e.IdExamen == idExamen)
+                    .Select(e => new { Materia = e.IdMateriaNavigation.Nombre, e.Fecha })
+                    .FirstAsync();
+                Usuario usuario = await _context.Docentes
+                    .Where(d => d.IdDocente == idDocente)
+                    .Select(d => d.IdUsuarioNavigation)
+                    .FirstAsync();
+
+                await _emailService.EnviarAvisoMesaExamenAsync(usuario.Email, usuario.Nombre ?? "Docente", datos.Materia, datos.Fecha);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "No se pudo enviar el aviso de la mesa {IdExamen} al docente {IdDocente}.", idExamen, idDocente);
+            }
+        }
+
+        /// <summary>
+        /// Tipos de examen que un docente carga y puede modificar desde el calendario.
+        /// </summary>
+        private static readonly string[] TiposQueGestionaElDocente = { "Parcial", "Recuperatorio", "Final" };
+
+        /// <summary>
+        /// Dirección/Secretaría pueden modificar o eliminar cualquier examen.
+        /// Un docente, solo los que cargó él mismo y que sean Parcial, Recuperatorio
+        /// o Final (no las mesas que registra Dirección/Secretaría).
         /// </summary>
         private async Task<bool> PuedeGestionarExamenAsync(Examene examen)
         {
             if (User.EsAdministrativo()) return true;
-            if (!User.IsInRole("Docente")) return false;
+
+            int? idDocente = await ObtenerIdDocenteActualAsync();
+            if (idDocente == null || examen.IdDocenteCreador != idDocente) return false;
+
+            string? tipo = await _context.TipoExamen
+                .Where(t => t.IdTipoExamen == examen.IdTipoExamen)
+                .Select(t => t.TipoExamen)
+                .FirstOrDefaultAsync();
+
+            return tipo != null && TiposQueGestionaElDocente.Contains(tipo);
+        }
+
+        /// <summary>El IdDocente del usuario logueado, o null si no es docente.</summary>
+        private async Task<int?> ObtenerIdDocenteActualAsync()
+        {
+            if (!User.IsInRole("Docente")) return null;
 
             int? idUsuario = User.ObtenerIdUsuario();
-            if (idUsuario == null) return false;
+            if (idUsuario == null) return null;
 
-            return await _context.DocenteMateria.AnyAsync(dm =>
-                dm.IdDocenteNavigation.IdUsuario == idUsuario.Value &&
-                dm.IdMateria == examen.IdMateria);
+            return await _context.Docentes
+                .Where(d => d.IdUsuario == idUsuario.Value)
+                .Select(d => (int?)d.IdDocente)
+                .FirstOrDefaultAsync();
         }
 
         // Si usa JWT, puede descomentar la siguiente línea para restringir el acceso:
@@ -77,15 +160,29 @@ namespace AutoGestionAPI.Controllers
                 nuevoLimite = config.LimiteParcialesDiario
             });
         }
-        private async Task<bool> SuperaLimiteDiarioAsync(DateTime fechaDeseada, int? idExamenIgnorar = null)
+        /// <summary>
+        /// El límite diario se aplica por GRUPO DE ALUMNOS: año (curso de la materia)
+        /// + comisión. Ej.: con límite 2, un día puede tener 2 exámenes de Primer Año
+        /// comisión A, 2 de Primer Año comisión B, 2 de Segundo Año comisión A, etc.
+        /// </summary>
+        private async Task<bool> SuperaLimiteDiarioAsync(DateTime fechaDeseada, int idMateria, int idComision, int? idExamenIgnorar = null)
         {
             // 1. Obtener el límite configurado (por defecto 2)
             ConfiguracionSistema? config = await _context.ConfiguracionesSistema.FirstOrDefaultAsync();
             int limite = config?.LimiteParcialesDiario ?? 2;
 
-            // 2. Contar cuántos exámenes YA existen en esa fecha EXACTA (ignorando la hora)
-            IQueryable<Examene> query = _context.Examenes
-                .Where(e => e.Fecha.Date == fechaDeseada.Date);
+            // El año de la materia (puede no estar cargado: esas materias forman su propio grupo)
+            string? curso = await _context.Materias
+                .Where(m => m.IdMateria == idMateria)
+                .Select(m => m.Curso)
+                .FirstOrDefaultAsync();
+
+            // 2. Contar cuántos exámenes de ese año y comisión ocupan esa fecha (ignorando
+            //    la hora). Incluye mesas pendientes y aceptadas; no las rechazadas.
+            IQueryable<Examene> query = ExamenesQueOcupanElDia()
+                .Where(e => e.Fecha.Date == fechaDeseada.Date
+                    && e.IdComision == idComision
+                    && e.IdMateriaNavigation.Curso == curso);
 
             // Si estamos editando, ignoramos el examen actual
             if (idExamenIgnorar.HasValue)
@@ -120,11 +217,20 @@ namespace AutoGestionAPI.Controllers
                 return BadRequest(new { message = "No tiene autorización para registrar exámenes de una materia que no dicta." });
             }
 
+            string? tipoExamen = await _context.TipoExamen
+                .Where(t => t.IdTipoExamen == dto.IdTipoExamen)
+                .Select(t => t.TipoExamen)
+                .FirstOrDefaultAsync();
+            if (tipoExamen == null || !TiposQueGestionaElDocente.Contains(tipoExamen))
+            {
+                return BadRequest(new { message = "Tipo de examen no válido. Debe ser Parcial, Recuperatorio o Final." });
+            }
+
             // 3. Verificamos el límite diario que ya teníamos programado
-            bool superaLimite = await SuperaLimiteDiarioAsync(dto.Fecha);
+            bool superaLimite = await SuperaLimiteDiarioAsync(dto.Fecha, dto.IdMateria, dto.IdComision);
             if (superaLimite)
             {
-                return BadRequest(new { message = "No se puede registrar. Se ha superado el límite de parciales para ese día." });
+                return BadRequest(new { message = "No se puede registrar: ese año y comisión ya tienen el máximo de exámenes permitido para ese día." });
             }
 
             // 4. Guardamos el examen (tal como lo tenía)
@@ -133,7 +239,8 @@ namespace AutoGestionAPI.Controllers
                 Fecha = dto.Fecha,
                 IdComision = dto.IdComision,
                 IdMateria = dto.IdMateria,
-                IdTipoExamen = dto.IdTipoExamen
+                IdTipoExamen = dto.IdTipoExamen,
+                IdDocenteCreador = docente.IdDocente
             };
 
             _context.Examenes.Add(nuevoExamen);
@@ -146,8 +253,16 @@ namespace AutoGestionAPI.Controllers
             });
         }
 
+        /// <summary>
+        /// Ocupación de cada día del mes. El límite es por año + comisión:
+        /// - Con <c>idMateria</c> e <c>idComision</c> (la materia y comisión que se
+        ///   están por cargar), cada día informa la cantidad y si está lleno PARA ESE
+        ///   año y comisión. Es lo que debería usar la pantalla de carga.
+        /// - Sin ellos, un día figura lleno si algún año + comisión llegó al límite.
+        /// En ambos casos cada día trae el detalle en <c>porGrupo</c>.
+        /// </summary>
         [HttpGet("estado-mes")]
-        public async Task<IActionResult> ObtenerEstadoMes(int anio, int mes)
+        public async Task<IActionResult> ObtenerEstadoMes(int anio, int mes, [FromQuery] int? idMateria = null, [FromQuery] int? idComision = null)
         {
             ConfiguracionSistema? config = await _context.ConfiguracionesSistema.FirstOrDefaultAsync();
             int limite = config?.LimiteParcialesDiario ?? 2;
@@ -155,18 +270,56 @@ namespace AutoGestionAPI.Controllers
             DateTime fechaInicioMes = new DateTime(anio, mes, 1);
             DateTime fechaFinMes = fechaInicioMes.AddMonths(1).AddSeconds(-1);
 
-            List<Examene> examenesDelMes = await _context.Examenes
+            // Días ocupados según el límite: cuentan también las mesas pendientes,
+            // para que nadie cargue un examen en un día que ya está reservado.
+            var examenesDelMes = await ExamenesQueOcupanElDia()
                 .Where(e => e.Fecha >= fechaInicioMes && e.Fecha <= fechaFinMes)
+                .Select(e => new
+                {
+                    e.Fecha,
+                    Curso = e.IdMateriaNavigation.Curso,
+                    e.IdComision,
+                    Comision = e.IdComisionNavigation.Comision1
+                })
                 .ToListAsync();
 
-            // Agrupamos por Día exacto
+            // Si piden un año + comisión concreto, solo cuentan los exámenes de ese grupo
+            bool filtrarGrupo = idMateria.HasValue && idComision.HasValue;
+            string? cursoFiltro = null;
+            if (filtrarGrupo)
+            {
+                cursoFiltro = await _context.Materias
+                    .Where(m => m.IdMateria == idMateria!.Value)
+                    .Select(m => m.Curso)
+                    .FirstOrDefaultAsync();
+                examenesDelMes = examenesDelMes
+                    .Where(e => e.IdComision == idComision!.Value && e.Curso == cursoFiltro)
+                    .ToList();
+            }
+
             var estadoPorDia = examenesDelMes
                 .GroupBy(e => e.Fecha.Date)
-                .Select(grupo => new
+                .Select(dia =>
                 {
-                    Fecha = grupo.Key,
-                    CantidadExamenes = grupo.Count(),
-                    LimiteAlcanzado = grupo.Count() >= limite
+                    var porGrupo = dia
+                        .GroupBy(e => new { e.Curso, e.IdComision, e.Comision })
+                        .Select(g => new
+                        {
+                            Curso = g.Key.Curso,
+                            IdComision = g.Key.IdComision,
+                            Comision = g.Key.Comision,
+                            CantidadExamenes = g.Count(),
+                            LimiteAlcanzado = g.Count() >= limite
+                        })
+                        .ToList();
+
+                    return new
+                    {
+                        Fecha = dia.Key,
+                        CantidadExamenes = dia.Count(),
+                        LimiteAlcanzado = porGrupo.Any(g => g.LimiteAlcanzado),
+                        PorGrupo = porGrupo
+                    };
                 });
 
             return Ok(new
@@ -190,11 +343,11 @@ namespace AutoGestionAPI.Controllers
 
             // Validamos la regla de negocio, pasándole el ID del examen actual 
             // para que NO se cuente a sí mismo en el cálculo de la semana.
-            bool superaLimite = await SuperaLimiteDiarioAsync(dto.NuevaFecha, idExamen);
+            bool superaLimite = await SuperaLimiteDiarioAsync(dto.NuevaFecha, examen.IdMateria, examen.IdComision, idExamen);
 
             if (superaLimite)
             {
-                return BadRequest(new { message = "No se puede reprogramar. El día ha superado el límite de parciales." });
+                return BadRequest(new { message = "No se puede reprogramar: ese año y comisión ya tienen el máximo de exámenes permitido para ese día." });
             }
 
             // Si pasa la validación, actualizamos la fecha
@@ -218,8 +371,15 @@ namespace AutoGestionAPI.Controllers
             if (!await PuedeGestionarExamenAsync(examen))
                 return Forbid();
 
+            // La base no borra en cascada los docentes asignados a la mesa: si no se
+            // quitan antes, el DELETE falla por la clave foránea de mesa_examen.
+            List<MesaExamen> asignaciones = await _context.MesasExamenes
+                .Where(m => m.IdExamen == idExamen)
+                .ToListAsync();
+            _context.MesasExamenes.RemoveRange(asignaciones);
+
             _context.Examenes.Remove(examen);
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync();   // ambos borrados en una sola transacción
 
             return Ok(new { message = "El examen ha sido eliminado del calendario correctamente." });
         }
@@ -283,7 +443,11 @@ namespace AutoGestionAPI.Controllers
             int mesActual = DateTime.Now.Month;
             int anioActual = DateTime.Now.Year;
 
-            List<ExamenMesDto> examenesMes = await _context.Examenes
+            bool esAdministrativo = User.EsAdministrativo();
+            int? idDocente = await ObtenerIdDocenteActualAsync();
+
+            // Las mesas aparecen recién cuando el docente convocado las acepta
+            List<ExamenMesDto> examenesMes = await ExamenesVisiblesEnCalendario()
                 .Include(e => e.IdMateriaNavigation)
                 .Include(e => e.IdComisionNavigation)    // NUEVO: Traemos los datos de la Comisión
                 .Include(e => e.IdTipoExamenNavigation)  // NUEVO: Traemos los datos del Tipo de Examen
@@ -296,7 +460,11 @@ namespace AutoGestionAPI.Controllers
 
                     // Ajuste ".Nombre" por el campo exacto que tenga en sus clases (ej. .Descripcion, .NumeroComision, etc.)
                     Comision = e.IdComisionNavigation.Comision1,
-                    TipoExamen = e.IdTipoExamenNavigation.TipoExamen
+                    TipoExamen = e.IdTipoExamenNavigation.TipoExamen,
+                    PuedeModificar = esAdministrativo
+                        || (idDocente != null
+                            && e.IdDocenteCreador == idDocente
+                            && TiposQueGestionaElDocente.Contains(e.IdTipoExamenNavigation.TipoExamen))
                 })
                 .OrderBy(e => e.Fecha)
                 .ToListAsync();
@@ -314,6 +482,13 @@ namespace AutoGestionAPI.Controllers
         [Authorize(Roles = "Director,Secretario")]
         public async Task<IActionResult> AsignarDocenteAMesa([FromBody] AsignarMesaDto dto)
         {
+            Examene? examen = await _context.Examenes.FindAsync(dto.IdExamen);
+            if (examen == null)
+                return NotFound(new { message = "No se encontró la mesa de examen." });
+
+            if (!await _context.Docentes.AnyAsync(d => d.IdDocente == dto.IdDocente))
+                return BadRequest(new { message = "El docente seleccionado no existe." });
+
             // 1. Verificamos que no exista ya una asignación para este examen y este docente
             bool asignacionExiste = await _context.MesasExamenes
                 .AnyAsync(m => m.IdExamen == dto.IdExamen && m.IdDocente == dto.IdDocente);
@@ -321,6 +496,14 @@ namespace AutoGestionAPI.Controllers
             if (asignacionExiste)
             {
                 return BadRequest(new { message = "El docente ya se encuentra asignado a esta mesa de examen." });
+            }
+
+            // Si la mesa había quedado libre (todos rechazaron), al reasignarla vuelve
+            // a ocupar el día: tiene que haber lugar dentro del límite diario.
+            bool yaOcupaElDia = await ExamenesQueOcupanElDia().AnyAsync(e => e.IdExamen == dto.IdExamen);
+            if (!yaOcupaElDia && await SuperaLimiteDiarioAsync(examen.Fecha, examen.IdMateria, examen.IdComision, examen.IdExamen))
+            {
+                return BadRequest(new { message = "No se puede reasignar la mesa: ese año y comisión ya tienen el máximo de exámenes permitido para ese día." });
             }
 
             // 2. Creamos la asignación
@@ -333,6 +516,8 @@ namespace AutoGestionAPI.Controllers
 
             _context.MesasExamenes.Add(nuevaAsignacion);
             await _context.SaveChangesAsync();
+
+            await AvisarConvocatoriaAsync(dto.IdDocente, dto.IdExamen);
 
             return Ok(new { message = "Docente asignado correctamente. Se ha notificado al profesor." });
         }
@@ -348,6 +533,12 @@ namespace AutoGestionAPI.Controllers
             if (!docenteExiste)
             {
                 return BadRequest(new { message = "El docente seleccionado no existe." });
+            }
+
+            // La mesa también cuenta para el límite de exámenes por día
+            if (await SuperaLimiteDiarioAsync(dto.Fecha, dto.IdMateria, dto.IdComision))
+            {
+                return BadRequest(new { message = "No se puede registrar la mesa: ese año y comisión ya tienen el máximo de exámenes permitido para ese día." });
             }
 
             using IDbContextTransaction transaction = await _context.Database.BeginTransactionAsync();
@@ -379,6 +570,8 @@ namespace AutoGestionAPI.Controllers
 
                 // Confirmamos definitivamente ambos cambios en SQL Server
                 await transaction.CommitAsync();
+
+                await AvisarConvocatoriaAsync(dto.IdDocente, nuevaMesa.IdExamen);
 
                 return Ok(new
                 {

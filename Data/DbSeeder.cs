@@ -60,6 +60,30 @@ namespace AutoGestionAPI.Data
 
             await SincronizarDocumentacionAsync(context);
 
+            // Años de las materias escritos de distintas formas ("1° año", "primer año")
+            // se unifican ("Primer Año"), porque el límite de exámenes se cuenta por año.
+            // Los que no se reconocen quedan como están, para revisarlos a mano.
+            List<Materia> materias = await context.Materias.Where(m => m.Curso != null).ToListAsync();
+            foreach (Materia materia in materias)
+            {
+                string? curso = AutoGestionAPI.Services.CursosMateria.Normalizar(materia.Curso);
+                if (curso != null && curso != materia.Curso)
+                    materia.Curso = curso;
+            }
+            await context.SaveChangesAsync();
+
+            // Tipos de examen del calendario. Están definidos en el modelo (HasData),
+            // pero en algunas bases quedaron vacíos y sin ellos no se puede registrar
+            // ningún examen. Se agregan los que falten, en este orden (ids 1, 2 y 3).
+            foreach (string tipo in new[] { "Parcial", "Recuperatorio", "Final" })
+            {
+                if (!await context.TipoExamen.AnyAsync(t => t.TipoExamen == tipo))
+                {
+                    context.TipoExamen.Add(new TipoExaman { TipoExamen = tipo });
+                    await context.SaveChangesAsync();
+                }
+            }
+
             if (!await context.Comisions.AnyAsync())
             {
                 List<Comision> comisiones = new List<Comision>

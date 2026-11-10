@@ -394,6 +394,10 @@ namespace AutoGestionAPI.Migrations
                         .HasColumnType("int")
                         .HasColumnName("id_comision");
 
+                    b.Property<int?>("IdDocenteCreador")
+                        .HasColumnType("int")
+                        .HasColumnName("id_docente_creador");
+
                     b.Property<int>("IdMateria")
                         .HasColumnType("int")
                         .HasColumnName("id_materia");
@@ -406,6 +410,8 @@ namespace AutoGestionAPI.Migrations
                         .HasName("PK__Examenes__D16A231D13159B4C");
 
                     b.HasIndex("IdComision");
+
+                    b.HasIndex("IdDocenteCreador");
 
                     b.HasIndex("IdMateria");
 
@@ -1499,6 +1505,11 @@ namespace AutoGestionAPI.Migrations
                         .IsRequired()
                         .HasConstraintName("FK_Examenes_Comision");
 
+                    b.HasOne("AutoGestionAPI.Models.Docente", "IdDocenteCreadorNavigation")
+                        .WithMany()
+                        .HasForeignKey("IdDocenteCreador")
+                        .HasConstraintName("FK_Examenes_DocenteCreador");
+
                     b.HasOne("AutoGestionAPI.Models.Materia", "IdMateriaNavigation")
                         .WithMany("Examenes")
                         .HasForeignKey("IdMateria")
@@ -1512,6 +1523,8 @@ namespace AutoGestionAPI.Migrations
                         .HasConstraintName("FK_Examenes_TipoExamen");
 
                     b.Navigation("IdComisionNavigation");
+
+                    b.Navigation("IdDocenteCreadorNavigation");
 
                     b.Navigation("IdMateriaNavigation");
 
