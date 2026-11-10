@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using AutoGestionAPI.Models;
@@ -7,6 +8,7 @@ namespace TuProyecto.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
+    [AllowAnonymous] // Países y provincias son datos públicos.
     public class UbicacionesController : ControllerBase
     {
         private readonly TuDbContext _context;

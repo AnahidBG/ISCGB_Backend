@@ -1,32 +1,47 @@
 using Microsoft.EntityFrameworkCore;
 using AutoGestionAPI.Models;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
+using System.Threading.RateLimiting;
 using AutoGestionAPI.Services;
 using Microsoft.OpenApi;
 
-var builder = WebApplication.CreateBuilder(args);
+WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
 
 builder.Services.AddDbContext<TuDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 builder.Services.AddControllers();
+
+// Clave JWT. En desarrollo viene de appsettings.Development.json (clave de
+// prueba, así alcanza con "dotnet run"). En producción se carga con la
+// variable de entorno Jwt__Key y NO puede ser la clave de desarrollo.
+string? jwtKey = builder.Configuration["Jwt:Key"];
+if (string.IsNullOrWhiteSpace(jwtKey) || jwtKey.Length < 32)
+{
+    throw new InvalidOperationException(
+        "Falta configurar 'Jwt:Key' (mínimo 32 caracteres). " +
+        "En producción: variable de entorno Jwt__Key. Ver README.");
+}
+if (!builder.Environment.IsDevelopment() && jwtKey.StartsWith("CLAVE-SOLO-PARA-DESARROLLO"))
+{
+    throw new InvalidOperationException(
+        "Se está usando la clave JWT de desarrollo fuera de desarrollo. " +
+        "Configurá una clave propia con la variable de entorno Jwt__Key.");
+}
+
 //Esto configura que ASP.NET valide JWT
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
-        IConfigurationSection jwtSettings =
-            builder.Configuration.GetSection("Jwt");
-
-        string? key = jwtSettings["Key"];
-
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new SymmetricSecurityKey(
-                Encoding.ASCII.GetBytes(key!)),
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.ASCII.GetBytes(jwtKey)),
 
             ValidateIssuer = false,
             ValidateAudience = false,
@@ -36,9 +51,32 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
-builder.Services.AddAuthorization();
+// Por defecto TODOS los endpoints requieren estar logueado. Los públicos
+// (login, recupero de contraseña, etc.) se marcan con [AllowAnonymous].
+builder.Services.AddAuthorization(options =>
+{
+    options.FallbackPolicy = new AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .Build();
+});
+
+// Limita los intentos contra login / recupero de contraseña para frenar
+// ataques de fuerza bruta: 10 pedidos por minuto por IP.
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("auth", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "desconocida",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            }));
+});
+
 builder.Services.AddEndpointsApiExplorer();
-//builder.Services.AddSwaggerGen();
 
 builder.Services.AddSwaggerGen(options =>
 {
@@ -57,12 +95,14 @@ builder.Services.AddSwaggerGen(options =>
         });
 });
 
+// El origen del frontend se configura en appsettings ("Frontend:Url").
+string urlFrontend = builder.Configuration["Frontend:Url"] ?? "http://localhost:4200";
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("PermitirAngular", policy =>
     {
-        // Cambiar por el puerto que corresponda desde angular.
-        policy.WithOrigins("http://localhost:4200")
+        policy.WithOrigins(urlFrontend)
               .AllowAnyHeader()
               .AllowAnyMethod();
     });
@@ -72,58 +112,48 @@ builder.Services.AddScoped<IDocumentacionService, DocumentacionService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddHostedService<AutoGestionAPI.Workers.NotificadorFaltantesWorker>();
 
-var app = builder.Build();
+WebApplication app = builder.Build();
 
-app.UseSwagger();
-app.UseSwaggerUI(c =>
+// Swagger expone todo el mapa de la API: solo en desarrollo.
+if (app.Environment.IsDevelopment())
 {
-    c.SwaggerEndpoint("/swagger/v1/swagger.json", "AutoGestión Docente API v1");
-});
+    app.UseSwagger();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "AutoGestión Docente API v1");
+    });
+}
 
-using (var scope = app.Services.CreateScope())
+// --- AUTO-MIGRACIÓN Y CARGA INICIAL ---
+// Primero se aplican las migraciones y recién después se siembran los datos:
+// en una base nueva el seeder necesita que las tablas ya existan.
+using (IServiceScope scope = app.Services.CreateScope())
 {
-    var services = scope.ServiceProvider;
+    TuDbContext context = scope.ServiceProvider.GetRequiredService<TuDbContext>();
+    ILogger<Program> logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
     try
     {
-        // Pedimos la conexión a la base de datos
-        var context = services.GetRequiredService<TuDbContext>();
-
-        // Ejecutamos nuestra siembra
-        AutoGestionAPI.Data.DbSeeder.Inicializar(context);
+        context.Database.Migrate(); // Lee la carpeta Migrations y actualiza SQL Server
+        await AutoGestionAPI.Data.DbSeeder.Inicializar(context);
     }
     catch (Exception ex)
     {
-        Console.WriteLine("Error al insertar las provincias: " + ex.Message);
+        logger.LogError(ex, "Error al migrar o inicializar la base de datos.");
+        throw;
     }
 }
 
 // app.UseHttpsRedirection();
 
-
-// Ejecutar dotnet ef database update
-
-
 app.UseCors("PermitirAngular");
 
 app.UseStaticFiles();
+
+app.UseRateLimiter();
 
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
-
-// --- AUTO-MIGRACIÓN PARA EL EQUIPO ---
-using (var scope = app.Services.CreateScope())
-{
-    var context = scope.ServiceProvider.GetRequiredService<TuDbContext>();
-    try
-    {
-        context.Database.Migrate(); // Lee la carpeta Migrations y actualiza SQL Server
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"Error actualizando la base de datos: {ex.Message}");
-    }
-}
 
 app.Run();

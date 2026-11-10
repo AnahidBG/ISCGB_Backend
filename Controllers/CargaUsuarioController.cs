@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using AutoGestionAPI.Models;
 using AutoGestionAPI.DTOs.Usuarios;
@@ -16,11 +17,13 @@ namespace AutoGestionAPI.Controllers
     {
         private readonly TuDbContext _context;
         private readonly IEmailService _emailService;
+        private readonly IConfiguration _configuration;
 
-        public UsuariosAdminController(TuDbContext context, IEmailService emailService)
+        public UsuariosAdminController(TuDbContext context, IEmailService emailService, IConfiguration configuration)
         {
             _context = context;
             _emailService = emailService;
+            _configuration = configuration;
         }
 
         [HttpPost("alta")]
@@ -44,7 +47,7 @@ namespace AutoGestionAPI.Controllers
 
             if (dto.IdsRoles.Contains(3) && dto.EsDirectorSuplente)
             {
-                var existeSuplente = await _context.Docentes
+                Docente? existeSuplente = await _context.Docentes
                     .Include(d => d.IdUsuarioNavigation)
                     .FirstOrDefaultAsync(d => d.DirectorSuplente == true && d.IdUsuarioNavigation.EstadoUsuario == true);
 
@@ -56,7 +59,7 @@ namespace AutoGestionAPI.Controllers
 
             string tokenConfiguracion = Guid.NewGuid().ToString("N");
 
-            var nuevoUsuario = new Usuario
+            Usuario nuevoUsuario = new Usuario
             {
                 Nombre = dto.Nombre,
                 Apellido = dto.Apellido,
@@ -79,7 +82,7 @@ namespace AutoGestionAPI.Controllers
             };
 
 
-            foreach (var idRol in dto.IdsRoles.Distinct())
+            foreach (int idRol in dto.IdsRoles.Distinct())
             {
                 nuevoUsuario.UsuariosRoles.Add(new UsuariosRole { IdRol = idRol });
             }
@@ -107,7 +110,8 @@ namespace AutoGestionAPI.Controllers
             // 5. Enviar el enlace por correo
             try
             {
-                string urlConfiguracion = $"http://localhost:4200/crear-password?token={tokenConfiguracion}";
+                string urlFrontend = _configuration["Frontend:Url"] ?? "http://localhost:4200";
+                string urlConfiguracion = $"{urlFrontend}/crear-password?token={tokenConfiguracion}";
                 await _emailService.EnviarLinkConfiguracionAsync(dto.Email, dto.Nombre, urlConfiguracion);
             }
             catch (Exception ex)
@@ -119,6 +123,7 @@ namespace AutoGestionAPI.Controllers
         }
 
         [AllowAnonymous]
+        [EnableRateLimiting("auth")]
         [HttpPost("establecer-password")]
         public async Task<IActionResult> EstablecerPassword([FromBody] EstablecerPasswordDto dto)
         {
@@ -148,7 +153,7 @@ namespace AutoGestionAPI.Controllers
         [Authorize(Roles = "Director,Secretario")]
         public async Task<IActionResult> ModificarUsuario(int id, [FromBody] CargaUsuarioDto dto)
         {
-            var usuario = await _context.Usuarios
+            Usuario? usuario = await _context.Usuarios
                 .Include(u => u.Docentes)
                 // Agregamos el Include de Alumnos para poder validarlo abajo
                 .Include(u => u.Alumnos)
@@ -164,14 +169,24 @@ namespace AutoGestionAPI.Controllers
             if (dto.IdsRoles.Any(r => r < 1 || r > 4))
                 return BadRequest(new { message = "Uno o más roles son inválidos." });
 
-            // 2. Validar y actualizar DNI solo si fue enviado
-            if (!string.IsNullOrWhiteSpace(dto.Dni))
+            // 2. Validar y actualizar DNI solo si fue enviado (permite corregir un error de carga)
+            string? dniNuevo = dto.Dni?.Trim();
+            if (!string.IsNullOrWhiteSpace(dniNuevo) && dniNuevo != usuario.Dni)
             {
-                bool dniExiste = await _context.Usuarios.AnyAsync(u => u.Dni == dto.Dni && u.IdUsuario != id);
+                bool dniExiste = await _context.Usuarios.AnyAsync(u => u.Dni == dniNuevo && u.IdUsuario != id);
                 if (dniExiste)
-                    return BadRequest(new { message = $"Ya existe otro usuario registrado con el DNI {dto.Dni}." });
+                    return BadRequest(new { message = $"Ya existe otro usuario registrado con el DNI {dniNuevo}." });
 
-                usuario.Dni = dto.Dni;
+                // El N° de legajo del alumno se genera con el DNI: si seguía siendo el
+                // DNI anterior, se corrige junto con él. Si alguien le asignó otro
+                // número a mano, se respeta.
+                string? dniAnterior = usuario.Dni;
+                foreach (Alumno alumno in usuario.Alumnos.Where(a => a.Legajo == dniAnterior))
+                {
+                    alumno.Legajo = dniNuevo;
+                }
+
+                usuario.Dni = dniNuevo;
             }
 
             // 3. Validar y actualizar Email solo si fue enviado
@@ -206,7 +221,7 @@ namespace AutoGestionAPI.Controllers
             }
 
 
-            foreach (var idRol in dto.IdsRoles.Distinct())
+            foreach (int idRol in dto.IdsRoles.Distinct())
             {
                 usuario.UsuariosRoles.Add(new UsuariosRole { IdRol = idRol, IdUsuario = usuario.IdUsuario });
             }
@@ -215,7 +230,7 @@ namespace AutoGestionAPI.Controllers
             if (dto.IdsRoles.Contains(3))
             {
 
-                var docente = usuario.Docentes.FirstOrDefault();
+                Docente? docente = usuario.Docentes.FirstOrDefault();
                 if (docente == null)
                 {
                     docente = new Docente { IdUsuario = usuario.IdUsuario, DirectorSuplente = false };
@@ -226,7 +241,7 @@ namespace AutoGestionAPI.Controllers
 
                 if (dto.EsDirectorSuplente && docente.DirectorSuplente != true)
                 {
-                    var existeSuplente = await _context.Docentes
+                    Docente? existeSuplente = await _context.Docentes
                         .Include(d => d.IdUsuarioNavigation)
                         .FirstOrDefaultAsync(d => d.DirectorSuplente == true && d.IdUsuarioNavigation.EstadoUsuario == true && d.IdUsuario != id);
 
@@ -242,7 +257,7 @@ namespace AutoGestionAPI.Controllers
             }
             else
             {
-                var docente = usuario.Docentes.FirstOrDefault();
+                Docente? docente = usuario.Docentes.FirstOrDefault();
                 if (docente != null) docente.DirectorSuplente = false;
             }
 
@@ -263,7 +278,7 @@ namespace AutoGestionAPI.Controllers
         [Authorize(Roles = "Director,Secretario")]
         public async Task<IActionResult> BajaUsuario(int id)
         {
-            var usuario = await _context.Usuarios
+            Usuario? usuario = await _context.Usuarios
                 .Include(u => u.Docentes)
                 .FirstOrDefaultAsync(u => u.IdUsuario == id);
 
@@ -273,7 +288,7 @@ namespace AutoGestionAPI.Controllers
             usuario.EstadoUsuario = false;
 
 
-            var docente = usuario.Docentes.FirstOrDefault();
+            Docente? docente = usuario.Docentes.FirstOrDefault();
             if (docente != null && docente.DirectorSuplente == true)
             {
                 docente.DirectorSuplente = false;
@@ -287,7 +302,7 @@ namespace AutoGestionAPI.Controllers
         [Authorize(Roles = "Director,Secretario")]
         public async Task<IActionResult> AltaUsuario(int id)
         {
-            var usuario = await _context.Usuarios.FindAsync(id);
+            Usuario? usuario = await _context.Usuarios.FindAsync(id);
 
             if (usuario == null) return NotFound(new { message = "Usuario no encontrado." });
 

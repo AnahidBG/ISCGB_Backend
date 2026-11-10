@@ -10,7 +10,7 @@ namespace AutoGestionAPI.Data
         {
             if (!context.Roles.Any())
             {
-                var roles = new List<Role>
+                List<Role> roles = new List<Role>
                 {
                     new Role { Rol = "Director" },    // ID 1
                     new Role { Rol = "Secretario" },  // ID 2
@@ -24,15 +24,15 @@ namespace AutoGestionAPI.Data
 
             if (!context.Pais.Any())
             {
-                var argentina = new Pai { Nombre = "Argentina" };
-                var uruguay = new Pai { Nombre = "Uruguay" };
-                var peru = new Pai { Nombre = "Perú" };
-                var venezuela = new Pai { Nombre = "Venezuela" };
+                Pai argentina = new Pai { Nombre = "Argentina" };
+                Pai uruguay = new Pai { Nombre = "Uruguay" };
+                Pai peru = new Pai { Nombre = "Perú" };
+                Pai venezuela = new Pai { Nombre = "Venezuela" };
 
                 context.Pais.AddRange(argentina, uruguay, peru, venezuela);
                 context.SaveChanges();
 
-                var provincias = new List<Provincium>
+                List<Provincium> provincias = new List<Provincium>
                 {
                     // Provincias de Argentina
                     new Provincium { Nombre = "Córdoba", IdPais = argentina.IdPais },
@@ -60,7 +60,7 @@ namespace AutoGestionAPI.Data
 
             if (!context.TiposDocumentos.Any())
             {
-                var tiposDocumentos = new List<TiposDocumento>
+                List<TiposDocumento> tiposDocumentos = new List<TiposDocumento>
                 {
                     new TiposDocumento { NombreDocumento = "DNI FRENTE" },
                     new TiposDocumento { NombreDocumento = "DNI DORSO" },
@@ -80,7 +80,7 @@ namespace AutoGestionAPI.Data
 
             if (!context.RolesTiposDocumentos.Any())
             {
-                var rolesDocumentos = new List<RolesTiposDocumento>
+                List<RolesTiposDocumento> rolesDocumentos = new List<RolesTiposDocumento>
                 {
                     // Documentos para Docentes (Rol 3)
                     new RolesTiposDocumento { IdRol = 3, IdTipoDoc = 1, Obligatorio = false },
@@ -106,7 +106,7 @@ namespace AutoGestionAPI.Data
 
             if (!await context.Comisions.AnyAsync())
             {
-                var comisiones = new List<Comision>
+                List<Comision> comisiones = new List<Comision>
                 {
                     new Comision { Comision1 = "A" },
                     new Comision { Comision1 = "B" }

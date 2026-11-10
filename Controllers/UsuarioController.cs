@@ -4,11 +4,13 @@ using AutoGestionAPI.Models;
 using Microsoft.AspNetCore.Authorization;
 using AutoGestionAPI.DTOs;
 using System.Security.Claims;
+using AutoGestionAPI.Seguridad;
 
 namespace AutoGestionAPI.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
+    [Authorize]
     public class UsuariosController : ControllerBase
     {
         private readonly TuDbContext _context;
@@ -18,9 +20,13 @@ namespace AutoGestionAPI.Controllers
             _context = context;
         }
 
+        // Cada persona puede ver sus propios datos; Dirección/Secretaría, los de cualquiera.
         [HttpGet("{id}")]
         public IActionResult GetUsuarioById(int id)
         {
+            if (!User.PuedeAccederA(id))
+                return Forbid();
+
             var usuario = _context.Usuarios
                 .Include(u => u.UsuariosRoles)
                     .ThenInclude(ur => ur.IdRolNavigation)
@@ -56,6 +62,7 @@ namespace AutoGestionAPI.Controllers
 
         // GET: api/Usuarios
         [HttpGet]
+        [Authorize(Roles = UsuarioActual.RolesAdministrativos)]
         public IActionResult GetUsuarios(
             [FromQuery] string? rol,
             [FromQuery] bool? estado,
@@ -64,7 +71,7 @@ namespace AutoGestionAPI.Controllers
         )
         {
 
-            var query = _context.Usuarios
+            IQueryable<Usuario> query = _context.Usuarios
                 .Include(u => u.UsuariosRoles)
                     .ThenInclude(ur => ur.IdRolNavigation)
                 .AsQueryable();
@@ -77,10 +84,10 @@ namespace AutoGestionAPI.Controllers
                 query = query.Where(u => u.EstadoUsuario == estado.Value);
 
 
-            var totalRegistros = query.Count();
+            int totalRegistros = query.Count();
 
 
-            var totalPaginas = (int)Math.Ceiling(totalRegistros / (double)registrosPorPagina);
+            int totalPaginas = (int)Math.Ceiling(totalRegistros / (double)registrosPorPagina);
 
 
             var usuarios = query
@@ -130,11 +137,11 @@ namespace AutoGestionAPI.Controllers
             if (dto.Foto == null || dto.Foto.Length == 0)
                 return BadRequest(new { message = "No se envió ninguna imagen." });
 
-            // 3. Validamos la extensión por seguridad
-            var extensionesPermitidas = new[] { ".jpg", ".jpeg", ".png" };
-            var extension = Path.GetExtension(dto.Foto.FileName).ToLower();
-            if (!extensionesPermitidas.Contains(extension))
-                return BadRequest(new { message = "Formato no válido. Solo se permiten JPG y PNG." });
+            // 3. Validamos extensión, tamaño (máx. 5 MB) y contenido real del archivo
+            string? errorArchivo = ValidadorArchivos.Validar(dto.Foto, ValidadorArchivos.Imagenes, 5 * 1024 * 1024);
+            if (errorArchivo != null)
+                return BadRequest(new { message = errorArchivo });
+            string extension = ValidadorArchivos.ObtenerExtension(dto.Foto);
 
             // 4. Preparamos la carpeta de destino física en el servidor (wwwroot/uploads/perfiles)
             string carpetaDestino = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads", "perfiles");
@@ -148,13 +155,13 @@ namespace AutoGestionAPI.Controllers
             string rutaFisica = Path.Combine(carpetaDestino, nombreArchivo);
 
             // 6. Guardamos el archivo físicamente en el disco
-            using (var stream = new FileStream(rutaFisica, FileMode.Create))
+            using (FileStream stream = new FileStream(rutaFisica, FileMode.Create))
             {
                 await dto.Foto.CopyToAsync(stream);
             }
 
             // 7. Actualizamos la base de datos
-            var usuario = await _context.Usuarios.FindAsync(idUsuario);
+            Usuario? usuario = await _context.Usuarios.FindAsync(idUsuario);
             if (usuario == null) return NotFound("Usuario no encontrado.");
 
             // (Opcional) Aquí podría agregar código para borrar la foto anterior del disco duro si ya tenía una
@@ -179,7 +186,7 @@ namespace AutoGestionAPI.Controllers
             string? usuarioIdClaim = User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
             if (!int.TryParse(usuarioIdClaim, out int idUsuario)) return Unauthorized();
 
-            var usuario = await _context.Usuarios.FindAsync(idUsuario);
+            Usuario? usuario = await _context.Usuarios.FindAsync(idUsuario);
             if (usuario == null) return NotFound(new { message = "Usuario no encontrado." });
 
             if (!string.IsNullOrWhiteSpace(dto.Email) && dto.Email != usuario.Email)

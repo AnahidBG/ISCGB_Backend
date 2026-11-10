@@ -28,53 +28,55 @@ namespace AutoGestionAPI.Workers
                 try
                 {
                     // 1. CREAMOS UN ÁMBITO (SCOPE) NUEVO EN CADA ITERACIÓN
-                    using (var scope = _scopeFactory.CreateScope())
+                    using (IServiceScope scope = _scopeFactory.CreateScope())
                     {
                         // 2. EXTRAEMOS LOS SERVICIOS FRESCOS Y LISTOS PARA USAR
-                        var context = scope.ServiceProvider.GetRequiredService<TuDbContext>();
-                        var emailService = scope.ServiceProvider.GetRequiredService<IEmailService>();
+                        TuDbContext context = scope.ServiceProvider.GetRequiredService<TuDbContext>();
+                        IEmailService emailService = scope.ServiceProvider.GetRequiredService<IEmailService>();
 
-                        var config = await context.ConfiguracionesSistema.OrderBy(c => c.IdConfiguracion).FirstOrDefaultAsync(stoppingToken);
+                        ConfiguracionSistema? config = await context.ConfiguracionesSistema.OrderBy(c => c.IdConfiguracion).FirstOrDefaultAsync(stoppingToken);
                         int diasFrecuencia = config?.FrecuenciaNotificacionDias ?? 7;
-                        var fechaLimite = DateTime.UtcNow.AddDays(-diasFrecuencia);
+                        DateTime fechaLimite = DateTime.UtcNow.AddDays(-diasFrecuencia);
 
                         // Traemos los catálogos para no ir a la base de datos a cada rato
-                        var todosLosTiposDocumentos = await context.TiposDocumentos.ToListAsync(stoppingToken);
+                        List<TiposDocumento> todosLosTiposDocumentos = await context.TiposDocumentos.ToListAsync(stoppingToken);
 
                         // Traemos SOLAMENTE las reglas donde Obligatorio es verdadero
-                        var reglasDocumentos = await context.RolesTiposDocumentos
+                        List<RolesTiposDocumento> reglasDocumentos = await context.RolesTiposDocumentos
                             .Where(r => r.Obligatorio == true)
                             .ToListAsync(stoppingToken);
 
-                        // Buscamos a los usuarios que necesitan revisión
-                        var usuarios = await context.Usuarios
+                        // Buscamos a los usuarios que necesitan revisión.
+                        // Los dados de baja (EstadoUsuario = false) no reciben avisos.
+                        List<Usuario> usuarios = await context.Usuarios
                             .Include(u => u.LegajoIdUsuarioNavigations)
                             .Include(u => u.UsuariosRoles)
+                            .Where(u => u.EstadoUsuario)
                             .Where(u => u.FechaUltimaNotificacion == null || u.FechaUltimaNotificacion < fechaLimite)
                             .AsSplitQuery()
                             .ToListAsync(stoppingToken);
 
                         int usuariosNotificados = 0;
 
-                        foreach (var usuario in usuarios)
+                        foreach (Usuario? usuario in usuarios)
                         {
-                            var idsRolesUsuario = usuario.UsuariosRoles.Select(ur => ur.IdRol).ToList();
+                            List<int> idsRolesUsuario = usuario.UsuariosRoles.Select(ur => ur.IdRol).ToList();
 
-                            var idsDocumentosExigidos = reglasDocumentos
+                            List<int> idsDocumentosExigidos = reglasDocumentos
                                 .Where(r => idsRolesUsuario.Contains(r.IdRol))
                                 .Select(r => r.IdTipoDoc)
                                 .Distinct()
                                 .ToList();
 
-                            var idsSubidos = usuario.LegajoIdUsuarioNavigations
+                            List<int> idsSubidos = usuario.LegajoIdUsuarioNavigations
                                 .Select(l => l.IdTipoDoc)
                                 .ToList();
 
-                            var idsFaltantes = idsDocumentosExigidos.Except(idsSubidos).ToList();
+                            List<int> idsFaltantes = idsDocumentosExigidos.Except(idsSubidos).ToList();
 
                             if (idsFaltantes.Any())
                             {
-                                var nombresDocumentosFaltantes = todosLosTiposDocumentos
+                                List<string> nombresDocumentosFaltantes = todosLosTiposDocumentos
                                     .Where(td => idsFaltantes.Contains(td.IdTipoDoc))
                                     .Select(td => td.NombreDocumento)
                                     .ToList();

@@ -63,6 +63,8 @@ public partial class TuDbContext : DbContext
 
     public virtual DbSet<MesaExamen> MesasExamenes { get; set; }
 
+    public virtual DbSet<ContratoAlumno> ContratosAlumno { get; set; }
+
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -761,6 +763,38 @@ public partial class TuDbContext : DbContext
             entity.Property(e => e.LimiteParcialesDiario)
                .HasDefaultValue(2)
                .HasColumnName("limite_parciales_diario");
+        });
+
+        modelBuilder.Entity<ContratoAlumno>(entity =>
+        {
+            entity.ToTable("contratos_alumno");
+
+            entity.HasKey(e => e.IdContrato);
+            entity.Property(e => e.IdContrato).HasColumnName("id_contrato");
+            entity.Property(e => e.IdUsuario).HasColumnName("id_usuario");
+            entity.Property(e => e.Nombre)
+                .HasMaxLength(100)
+                .HasColumnName("nombre");
+            entity.Property(e => e.RutaArchivo)
+                .HasMaxLength(500)
+                .IsUnicode(false)
+                .HasColumnName("ruta_archivo");
+            entity.Property(e => e.FechaCarga)
+                .HasColumnType("datetime")
+                .HasColumnName("fecha_carga");
+            entity.Property(e => e.IdUsuarioCarga).HasColumnName("id_usuario_carga");
+
+            entity.HasIndex(e => e.IdUsuario);
+
+            entity.HasOne(d => d.IdUsuarioNavigation).WithMany()
+                .HasForeignKey(d => d.IdUsuario)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_ContratosAlumno_Usuario");
+
+            entity.HasOne(d => d.IdUsuarioCargaNavigation).WithMany()
+                .HasForeignKey(d => d.IdUsuarioCarga)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_ContratosAlumno_UsuarioCarga");
         });
 
         OnModelCreatingPartial(modelBuilder);

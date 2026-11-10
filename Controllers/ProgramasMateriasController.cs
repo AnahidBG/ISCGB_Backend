@@ -5,6 +5,7 @@ using AutoGestionAPI.DTOs;
 using QuestPDF.Fluent;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
+using QuestPDF.Infrastructure;
 
 namespace AutoGestionAPI.Controllers
 {
@@ -24,15 +25,20 @@ namespace AutoGestionAPI.Controllers
         [Authorize(Roles = "Docente")]
         public async Task<IActionResult> CrearPrograma([FromBody] CrearProgramaDto dto)
         {
-            var docenteExiste = await _context.Docentes.AnyAsync(d => d.IdDocente == dto.IdDocente);
-            if (!docenteExiste)
+            Docente? docente = await _context.Docentes.FirstOrDefaultAsync(d => d.IdDocente == dto.IdDocente);
+            if (docente == null)
                 return NotFound(new { message = "El docente especificado no existe." });
 
-            var materiaExiste = await _context.Materias.AnyAsync(m => m.IdMateria == dto.IdMateria);
+            // Un docente solo puede cargar programas a su propio nombre
+            string? tokenUsuarioId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (tokenUsuarioId != docente.IdUsuario.ToString())
+                return Forbid();
+
+            bool materiaExiste = await _context.Materias.AnyAsync(m => m.IdMateria == dto.IdMateria);
             if (!materiaExiste)
                 return NotFound(new { message = "La materia especificada no existe." });
 
-            var nuevoPrograma = new ProgramasMaterium
+            ProgramasMaterium nuevoPrograma = new ProgramasMaterium
             {
                 IdDocente = dto.IdDocente,
                 IdMateria = dto.IdMateria,
@@ -79,7 +85,7 @@ namespace AutoGestionAPI.Controllers
         public async Task<IActionResult> DescargarPdf(int idPrograma)
         {
 
-            var programa = await _context.ProgramasMateria
+            ProgramasMaterium? programa = await _context.ProgramasMateria
                 .Include(p => p.Contenidos)
                 .Include(p => p.IdMateriaNavigation)
 
@@ -90,10 +96,10 @@ namespace AutoGestionAPI.Controllers
             if (programa == null) return NotFound();
 
 
-            var documentoPdf = GeneradorPdfPrograma.CrearDocumento(programa);
+            IDocument documentoPdf = GeneradorPdfPrograma.CrearDocumento(programa);
 
 
-            var pdfBytes = documentoPdf.GeneratePdf();
+            byte[] pdfBytes = documentoPdf.GeneratePdf();
 
 
             return File(pdfBytes, "application/pdf", $"Programa_Materia_{programa.IdMateria}.pdf");
@@ -108,7 +114,7 @@ namespace AutoGestionAPI.Controllers
             {
                 return Forbid(); // Retorna error 403 si intenta ver datos de otro profesor
             }
-            var docente = await _context.Docentes
+            Docente? docente = await _context.Docentes
                 .FirstOrDefaultAsync(d => d.IdUsuario == idUsuario);
 
             if (docente == null)
@@ -129,7 +135,7 @@ namespace AutoGestionAPI.Controllers
         })
         .ToListAsync();
 
-            var respuesta = new ContextoDocenteDto
+            ContextoDocenteDto respuesta = new ContextoDocenteDto
             {
                 IdDocente = docente.IdDocente,
                 Materias = materiasAsignadas

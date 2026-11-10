@@ -8,58 +8,54 @@ namespace AutoGestionAPI.Services
     {
         Task EnviarLinkConfiguracionAsync(string emailDestino, string nombre, string urlConfiguracion);
 
-        // Esta es la firma nueva que faltaba acá arriba
         Task EnviarAvisoFaltantesAsync(string email, string nombre, List<string> documentosFaltantes);
     }
 
     // 2. LA CLASE: Acá va el código real de cada función (terminan con llaves { })
     public class EmailService : IEmailService
     {
-        public async Task EnviarLinkConfiguracionAsync(string emailDestino, string nombre, string urlConfiguracion)
+        private readonly IConfiguration _configuration;
+        private readonly IHostEnvironment _entorno;
+        private readonly ILogger<EmailService> _logger;
+
+        public EmailService(IConfiguration configuration, IHostEnvironment entorno, ILogger<EmailService> logger)
         {
-            var smtpClient = new SmtpClient("smtp.gmail.com")
-            {
-                Port = 587,
-                Credentials = new NetworkCredential("notificacionesiscgb@gmail.com", "ylqteryqzxovutgs"),
-                EnableSsl = true,
-            };
-
-            var mensaje = new MailMessage
-            {
-                From = new MailAddress("notificacionesiscgb@gmail.com", "Sistema Académico"),
-                Subject = "Configura tu contraseña",
-                Body = $"<h3>Hola {nombre}</h3><p>Hacé clic en el siguiente enlace para crear tu contraseña de acceso al sistema: <br><br> <a href='{urlConfiguracion}'>Configurar mi contraseña</a></p>",
-                IsBodyHtml = true,
-            };
-
-            mensaje.To.Add(emailDestino);
-            await smtpClient.SendMailAsync(mensaje);
+            _configuration = configuration;
+            _entorno = entorno;
+            _logger = logger;
         }
 
-        // Este es el método nuevo con su "cuerpo" de código
+        // Cuenta remitente. La contraseña NO va en el código ni en appsettings.json:
+        // se carga con user-secrets (desarrollo) o con la variable de entorno
+        // Email__Password (producción).
+        private string Remitente => _configuration["Email:Usuario"]
+            ?? throw new InvalidOperationException("Falta configurar 'Email:Usuario'. Ver README.");
+
+        public async Task EnviarLinkConfiguracionAsync(string emailDestino, string nombre, string urlConfiguracion)
+        {
+            string nombreHtml = WebUtility.HtmlEncode(nombre);
+            string urlHtml = WebUtility.HtmlEncode(urlConfiguracion);
+
+            string cuerpo = $"<h3>Hola {nombreHtml}</h3><p>Hacé clic en el siguiente enlace para crear tu contraseña de acceso al sistema: <br><br> <a href='{urlHtml}'>Configurar mi contraseña</a></p>";
+
+            await EnviarAsync(emailDestino, "Configura tu contraseña", cuerpo,
+                resumenConsola: $"Link: {urlConfiguracion}");
+        }
+
         public async Task EnviarAvisoFaltantesAsync(string email, string nombre, List<string> documentosFaltantes)
         {
-            var smtpClient = new SmtpClient("smtp.gmail.com")
-            {
-                Port = 587,
-                Credentials = new NetworkCredential("notificacionesiscgb@gmail.com", "ylqteryqzxovutgs"),
-                EnableSsl = true,
-            };
+            string nombreHtml = WebUtility.HtmlEncode(nombre);
 
             // Armamos la lista de viñetas HTML con los documentos
             string listaHtml = "";
-            foreach (var doc in documentosFaltantes)
+            foreach (string doc in documentosFaltantes)
             {
-                listaHtml += $"<li><strong>{doc}</strong></li>";
+                listaHtml += $"<li><strong>{WebUtility.HtmlEncode(doc)}</strong></li>";
             }
 
-            var mensaje = new MailMessage
-            {
-                From = new MailAddress("notificacionesiscgb@gmail.com", "Sistema Académico"),
-                Subject = "Aviso de Documentación Faltante",
-                Body = $@"
+            string cuerpo = $@"
                     <div style='font-family: Arial, sans-serif; color: #333;'>
-                        <h3>Hola {nombre},</h3>
+                        <h3>Hola {nombreHtml},</h3>
                         <p>Te contactamos desde la administración para recordarte que tenés documentación pendiente de entrega en tu legajo.</p>
                         <p>Actualmente adeudás los siguientes documentos:</p>
                         <ul>
@@ -67,11 +63,45 @@ namespace AutoGestionAPI.Services
                         </ul>
                         <p>Por favor, regularizá esta situación a la brevedad presentándolos en secretaría.</p>
                         <p>Saludos cordiales.</p>
-                    </div>",
+                    </div>";
+
+            await EnviarAsync(email, "Aviso de Documentación Faltante", cuerpo,
+                resumenConsola: $"Documentos faltantes: {string.Join(", ", documentosFaltantes)}");
+        }
+
+        private async Task EnviarAsync(string destino, string asunto, string cuerpoHtml, string resumenConsola)
+        {
+            string? password = _configuration["Email:Password"];
+
+            // En desarrollo, si no hay contraseña de Gmail cargada, el correo no se
+            // manda: se muestra en la consola (así se pueden copiar los links).
+            if (string.IsNullOrWhiteSpace(password))
+            {
+                if (!_entorno.IsDevelopment())
+                    throw new InvalidOperationException("Falta configurar 'Email:Password'. Ver README.");
+
+                _logger.LogWarning(
+                    "[CORREO NO ENVIADO - sin Email:Password] Para: {Destino} | Asunto: {Asunto} | {Resumen}",
+                    destino, asunto, resumenConsola);
+                return;
+            }
+
+            using SmtpClient smtpClient = new SmtpClient(_configuration["Email:Host"] ?? "smtp.gmail.com")
+            {
+                Port = int.TryParse(_configuration["Email:Puerto"], out int puerto) ? puerto : 587,
+                Credentials = new NetworkCredential(Remitente, password),
+                EnableSsl = true,
+            };
+
+            using MailMessage mensaje = new MailMessage
+            {
+                From = new MailAddress(Remitente, "Sistema Académico"),
+                Subject = asunto,
+                Body = cuerpoHtml,
                 IsBodyHtml = true,
             };
 
-            mensaje.To.Add(email);
+            mensaje.To.Add(destino);
             await smtpClient.SendMailAsync(mensaje);
         }
     }
