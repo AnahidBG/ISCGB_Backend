@@ -610,6 +610,15 @@ namespace AutoGestionAPI.Migrations
                         .HasDefaultValue("Pendiente")
                         .HasColumnName("estado_confirmacion");
 
+                    b.Property<string>("Rol")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(20)")
+                        .HasDefaultValue("Presidente")
+                        .HasColumnName("rol");
+
                     b.HasKey("IdExamen", "IdDocente");
 
                     b.HasIndex("IdDocente");

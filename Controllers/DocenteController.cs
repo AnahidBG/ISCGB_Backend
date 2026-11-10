@@ -118,11 +118,22 @@ namespace AutoGestionAPI.Controllers
 
             await _context.SaveChangesAsync();
 
+            if (!dto.Acepta)
+                return Ok(new { message = "Rechazaste la mesa de examen. Se le avisó a Dirección/Secretaría." });
+
+            // La mesa aparece en el calendario cuando aceptaron los tres lugares del tribunal
+            int lugaresAceptados = await _context.MesasExamenes
+                .Where(m => m.IdExamen == dto.IdExamen && m.EstadoConfirmacion == "Aceptada")
+                .Select(m => m.Rol)
+                .Distinct()
+                .CountAsync();
+            int faltan = RolesMesa.Todos.Length - lugaresAceptados;
+
             return Ok(new
             {
-                message = dto.Acepta
-                    ? "Aceptaste la mesa de examen. Ya figura en el calendario."
-                    : "Rechazaste la mesa de examen. Se le avisó a Dirección/Secretaría."
+                message = faltan <= 0
+                    ? "Aceptaste la mesa de examen. El tribunal está completo y ya figura en el calendario."
+                    : $"Aceptaste la mesa de examen. Aparecerá en el calendario cuando acepten los demás integrantes del tribunal (falta{(faltan == 1 ? "" : "n")} {faltan})."
             });
         }
     }
