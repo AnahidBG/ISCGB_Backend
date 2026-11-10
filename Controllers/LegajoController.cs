@@ -19,12 +19,21 @@ namespace AutoGestionAPI.Controllers
         private readonly TuDbContext _context;
         private readonly IWebHostEnvironment _env;
         private readonly IDocumentacionService _documentacionService;
+        private readonly IEmailService _emailService;
+        private readonly ILogger<LegajosController> _logger;
 
-        public LegajosController(TuDbContext context, IWebHostEnvironment env, IDocumentacionService documentacionService)
+        public LegajosController(
+            TuDbContext context,
+            IWebHostEnvironment env,
+            IDocumentacionService documentacionService,
+            IEmailService emailService,
+            ILogger<LegajosController> logger)
         {
             _context = context;
             _env = env;
             _documentacionService = documentacionService;
+            _emailService = emailService;
+            _logger = logger;
         }
 
         // 1. POST: Subir un documento del legajo
@@ -97,6 +106,11 @@ namespace AutoGestionAPI.Controllers
             });
         }
 
+        private static bool EsRechazado(string? estado)
+        {
+            return string.Equals(estado?.Trim(), "Rechazado", StringComparison.OrdinalIgnoreCase);
+        }
+
         //Método para borrar acentos, Ñ, espacios en blanco
         private string LimpiarCadena(string texto)
         {
@@ -163,12 +177,43 @@ namespace AutoGestionAPI.Controllers
             if (idAuditor == null)
                 return Unauthorized();
 
+            bool recienRechazado = EsRechazado(dto.Estado) && !EsRechazado(legajo.Estado);
+
             legajo.IdUsuarioAuditor = idAuditor.Value;
             legajo.Estado = dto.Estado;
             legajo.Comentario = dto.Comentario;
             legajo.PresentadoFisico = dto.PresentadoFisico;
 
             await _context.SaveChangesAsync();
+
+            // Si se acaba de rechazar, se le avisa por mail con el motivo (el comentario).
+            // Si el mail falla, la auditoría ya quedó guardada igual.
+            if (recienRechazado)
+            {
+                try
+                {
+                    var datos = await _context.Legajos
+                        .Where(l => l.IdLegajo == idLegajo)
+                        .Select(l => new
+                        {
+                            l.IdUsuarioNavigation.Email,
+                            l.IdUsuarioNavigation.Nombre,
+                            Documento = l.IdTipoDocNavigation.NombreDocumento
+                        })
+                        .FirstAsync();
+
+                    await _emailService.EnviarAvisoRechazoAsync(
+                        datos.Email,
+                        datos.Nombre ?? "Usuario",
+                        $"tu documento \"{datos.Documento}\"",
+                        dto.Comentario,
+                        "Ingresá al sistema y volvé a subirlo desde tu legajo.");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "No se pudo enviar el aviso de rechazo del legajo {IdLegajo}.", idLegajo);
+                }
+            }
 
             return Ok(new RespuestaAuditoriaDto
             {

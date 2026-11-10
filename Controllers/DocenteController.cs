@@ -118,7 +118,12 @@ namespace AutoGestionAPI.Controllers
 
             await _context.SaveChangesAsync();
 
-            return Ok(new { message = $"Ha {mesa.EstadoConfirmacion.ToLower()} la asignación a la mesa de examen." });
+            return Ok(new
+            {
+                message = dto.Acepta
+                    ? "Aceptaste la mesa de examen. Ya figura en el calendario."
+                    : "Rechazaste la mesa de examen. Se le avisó a Dirección/Secretaría."
+            });
         }
     }
 }

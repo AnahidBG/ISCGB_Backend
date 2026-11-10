@@ -9,6 +9,13 @@ namespace AutoGestionAPI.Services
         Task EnviarLinkConfiguracionAsync(string emailDestino, string nombre, string urlConfiguracion);
 
         Task EnviarAvisoFaltantesAsync(string email, string nombre, List<string> documentosFaltantes);
+
+        Task EnviarAvisoMesaExamenAsync(string email, string nombre, string materia, DateTime fecha);
+
+        /// <param name="queSeRechazo">Ej.: "tu documento Apto Medico".</param>
+        /// <param name="motivo">El comentario de quien auditó; puede no haber.</param>
+        /// <param name="queHacer">Qué tiene que hacer la persona ahora.</param>
+        Task EnviarAvisoRechazoAsync(string email, string nombre, string queSeRechazo, string? motivo, string queHacer);
     }
 
     // 2. LA CLASE: Acá va el código real de cada función (terminan con llaves { })
@@ -40,6 +47,45 @@ namespace AutoGestionAPI.Services
 
             await EnviarAsync(emailDestino, "Configura tu contraseña", cuerpo,
                 resumenConsola: $"Link: {urlConfiguracion}");
+        }
+
+        public async Task EnviarAvisoMesaExamenAsync(string email, string nombre, string materia, DateTime fecha)
+        {
+            string nombreHtml = WebUtility.HtmlEncode(nombre);
+            string materiaHtml = WebUtility.HtmlEncode(materia);
+            string fechaTexto = fecha.ToString("dd/MM/yyyy 'a las' HH:mm");
+
+            string cuerpo = $@"
+                    <div style='font-family: Arial, sans-serif; color: #333;'>
+                        <h3>Hola {nombreHtml},</h3>
+                        <p>Dirección te convocó a la mesa de examen de <strong>{materiaHtml}</strong> el <strong>{fechaTexto}</strong>.</p>
+                        <p>Ingresá al sistema para <strong>aceptar o rechazar</strong> la convocatoria. La mesa aparecerá en el calendario cuando la aceptes.</p>
+                        <p>Saludos cordiales.</p>
+                    </div>";
+
+            await EnviarAsync(email, "Convocatoria a mesa de examen", cuerpo,
+                resumenConsola: $"Mesa de {materia} el {fechaTexto}");
+        }
+
+        public async Task EnviarAvisoRechazoAsync(string email, string nombre, string queSeRechazo, string? motivo, string queHacer)
+        {
+            string nombreHtml = WebUtility.HtmlEncode(nombre);
+            string queHtml = WebUtility.HtmlEncode(queSeRechazo);
+            string motivoHtml = string.IsNullOrWhiteSpace(motivo)
+                ? ""
+                : $"<p><strong>Motivo:</strong> {WebUtility.HtmlEncode(motivo.Trim())}</p>";
+
+            string cuerpo = $@"
+                    <div style='font-family: Arial, sans-serif; color: #333;'>
+                        <h3>Hola {nombreHtml},</h3>
+                        <p>Secretaría revisó {queHtml} y fue <strong>rechazado</strong>.</p>
+                        {motivoHtml}
+                        <p>{WebUtility.HtmlEncode(queHacer)}</p>
+                        <p>Saludos cordiales.</p>
+                    </div>";
+
+            await EnviarAsync(email, "Documentación rechazada", cuerpo,
+                resumenConsola: $"Rechazado: {queSeRechazo}" + (string.IsNullOrWhiteSpace(motivo) ? "" : $" | Motivo: {motivo.Trim()}"));
         }
 
         public async Task EnviarAvisoFaltantesAsync(string email, string nombre, List<string> documentosFaltantes)

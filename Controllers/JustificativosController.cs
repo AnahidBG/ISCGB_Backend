@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
 using AutoGestionAPI.Seguridad;
+using AutoGestionAPI.Services;
 using System.Text.RegularExpressions;
 
 namespace AutoGestionAPI.Controllers
@@ -17,10 +18,14 @@ namespace AutoGestionAPI.Controllers
     public class JustificativosController : ControllerBase
     {
         private readonly TuDbContext _context;
+        private readonly IEmailService _emailService;
+        private readonly ILogger<JustificativosController> _logger;
 
-        public JustificativosController(TuDbContext context)
+        public JustificativosController(TuDbContext context, IEmailService emailService, ILogger<JustificativosController> logger)
         {
             _context = context;
+            _emailService = emailService;
+            _logger = logger;
         }
 
         [HttpPost("cargar")]
@@ -114,6 +119,8 @@ namespace AutoGestionAPI.Controllers
             if (idAuditor == null) return Unauthorized();
 
 
+            bool recienRechazado = EsRechazado(dto.Estado) && !EsRechazado(justificativo.Estado);
+
             justificativo.Estado = dto.Estado;
             justificativo.IdUsuarioAuditor = idAuditor.Value;
 
@@ -124,11 +131,44 @@ namespace AutoGestionAPI.Controllers
             _context.Justificativos.Update(justificativo);
             await _context.SaveChangesAsync();
 
+            // Si se acaba de rechazar, se le avisa por mail. Si el mail falla, la
+            // auditoría ya quedó guardada igual.
+            if (recienRechazado)
+            {
+                try
+                {
+                    Usuario usuario = await _context.Usuarios.FirstAsync(u => u.IdUsuario == justificativo.IdUsuario);
+
+                    string periodo = justificativo.FechaInasistenciaInicio.HasValue
+                        ? justificativo.FechaInasistenciaFin.HasValue && justificativo.FechaInasistenciaFin.Value.Date != justificativo.FechaInasistenciaInicio.Value.Date
+                            ? $" del {justificativo.FechaInasistenciaInicio:dd/MM/yyyy} al {justificativo.FechaInasistenciaFin:dd/MM/yyyy}"
+                            : $" del {justificativo.FechaInasistenciaInicio:dd/MM/yyyy}"
+                        : "";
+                    string tipo = string.IsNullOrWhiteSpace(justificativo.TipoInasistencia) ? "" : $" ({justificativo.TipoInasistencia})";
+
+                    await _emailService.EnviarAvisoRechazoAsync(
+                        usuario.Email,
+                        usuario.Nombre ?? "Usuario",
+                        $"tu justificativo de inasistencia{periodo}{tipo}",
+                        dto.Comentario,
+                        "Si corresponde, cargá uno nuevo desde el sistema o acercate a Secretaría.");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "No se pudo enviar el aviso de rechazo del justificativo {IdJustificativo}.", idJustificativo);
+                }
+            }
+
             return Ok(new
             {
                 message = $"Justificativo {dto.Estado.ToLower()} con éxito",
                 estadoActual = justificativo.Estado
             });
+        }
+
+        private static bool EsRechazado(string? estado)
+        {
+            return string.Equals(estado?.Trim(), "Rechazado", StringComparison.OrdinalIgnoreCase);
         }
 
         //Endpoint que trae todos los justificativos pendientes.

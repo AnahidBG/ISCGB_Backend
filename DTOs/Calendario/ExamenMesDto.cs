@@ -9,5 +9,11 @@ namespace AutoGestionAPI.DTOs
         // --- NUEVOS CAMPOS ---
         public string Comision { get; set; } = null!;
         public string TipoExamen { get; set; } = null!;
+
+        /// <summary>
+        /// Si el usuario logueado puede modificarlo o eliminarlo: Dirección/Secretaría
+        /// siempre; un docente, solo si lo cargó él (Parcial, Recuperatorio o Final).
+        /// </summary>
+        public bool PuedeModificar { get; set; }
     }
 }
