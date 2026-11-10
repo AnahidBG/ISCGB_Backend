@@ -345,6 +345,12 @@ public partial class TuDbContext : DbContext
                 .HasDefaultValue("Pendiente")
                 .HasColumnName("estado_confirmacion");
 
+            entity.Property(e => e.Rol)
+                .HasMaxLength(20)
+                .IsUnicode(false)
+                .HasDefaultValue(RolesMesa.Presidente)
+                .HasColumnName("rol");
+
 
             entity.HasOne(d => d.IdDocenteNavigation).WithMany()
                 .HasForeignKey(d => d.IdDocente)

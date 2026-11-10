@@ -72,7 +72,8 @@ namespace AutoGestionAPI.Controllers
                     IdExamen = m.IdExamen,
                     Materia = m.IdExamenNavigation.IdMateriaNavigation.Nombre,
                     Fecha = m.IdExamenNavigation.Fecha,
-                    Mensaje = $"Ha sido asignado a la mesa de {m.IdExamenNavigation.IdMateriaNavigation.Nombre} el día {m.IdExamenNavigation.Fecha:dd/MM/yyyy HH:mm}"
+                    Rol = m.Rol,
+                    Mensaje = $"Ha sido convocado como {m.Rol} a la mesa de {m.IdExamenNavigation.IdMateriaNavigation.Nombre} el día {m.IdExamenNavigation.Fecha:dd/MM/yyyy HH:mm}"
                 })
                 .ToListAsync();
 
@@ -96,7 +97,8 @@ namespace AutoGestionAPI.Controllers
                     Docente = m.IdDocenteNavigation.IdUsuarioNavigation.Nombre + " " + m.IdDocenteNavigation.IdUsuarioNavigation.Apellido,
                     Materia = m.IdExamenNavigation.IdMateriaNavigation.Nombre,
                     Fecha = m.IdExamenNavigation.Fecha,
-                    Mensaje = "Asignación rechazada. Requiere reasignar a un nuevo docente de forma urgente."
+                    Rol = m.Rol,
+                    Mensaje = $"El {m.Rol} rechazó la mesa. Hay que convocar a otro docente para ese lugar."
                 })
                 .OrderBy(m => m.Fecha) // Ordenamos para que vean primero las mesas más próximas en el calendario
                 .ToListAsync();

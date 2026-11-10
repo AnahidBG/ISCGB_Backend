@@ -10,7 +10,7 @@ namespace AutoGestionAPI.Services
 
         Task EnviarAvisoFaltantesAsync(string email, string nombre, List<string> documentosFaltantes);
 
-        Task EnviarAvisoMesaExamenAsync(string email, string nombre, string materia, DateTime fecha);
+        Task EnviarAvisoMesaExamenAsync(string email, string nombre, string materia, DateTime fecha, string rol);
 
         /// <param name="queSeRechazo">Ej.: "tu documento Apto Medico".</param>
         /// <param name="motivo">El comentario de quien auditó; puede no haber.</param>
@@ -49,22 +49,23 @@ namespace AutoGestionAPI.Services
                 resumenConsola: $"Link: {urlConfiguracion}");
         }
 
-        public async Task EnviarAvisoMesaExamenAsync(string email, string nombre, string materia, DateTime fecha)
+        public async Task EnviarAvisoMesaExamenAsync(string email, string nombre, string materia, DateTime fecha, string rol)
         {
             string nombreHtml = WebUtility.HtmlEncode(nombre);
             string materiaHtml = WebUtility.HtmlEncode(materia);
+            string rolHtml = WebUtility.HtmlEncode(rol);
             string fechaTexto = fecha.ToString("dd/MM/yyyy 'a las' HH:mm");
 
             string cuerpo = $@"
                     <div style='font-family: Arial, sans-serif; color: #333;'>
                         <h3>Hola {nombreHtml},</h3>
-                        <p>Dirección te convocó a la mesa de examen de <strong>{materiaHtml}</strong> el <strong>{fechaTexto}</strong>.</p>
-                        <p>Ingresá al sistema para <strong>aceptar o rechazar</strong> la convocatoria. La mesa aparecerá en el calendario cuando la aceptes.</p>
+                        <p>Te convocaron como <strong>{rolHtml}</strong> del tribunal de la mesa de examen de <strong>{materiaHtml}</strong> el <strong>{fechaTexto}</strong>.</p>
+                        <p>Ingresá al sistema para <strong>aceptar o rechazar</strong> la convocatoria. La mesa aparecerá en el calendario cuando los tres integrantes del tribunal la acepten.</p>
                         <p>Saludos cordiales.</p>
                     </div>";
 
             await EnviarAsync(email, "Convocatoria a mesa de examen", cuerpo,
-                resumenConsola: $"Mesa de {materia} el {fechaTexto}");
+                resumenConsola: $"{rol} de la mesa de {materia} el {fechaTexto}");
         }
 
         public async Task EnviarAvisoRechazoAsync(string email, string nombre, string queSeRechazo, string? motivo, string queHacer)

@@ -47,21 +47,27 @@ namespace AutoGestionAPI.Controllers
         }
 
         /// <summary>
-        /// Exámenes que se MUESTRAN en el calendario: los que cargan los docentes y
-        /// las mesas recién cuando un docente convocado las aceptó.
+        /// Exámenes que se MUESTRAN en el calendario: los que cargan los docentes, y
+        /// las mesas recién cuando el tribunal completo aceptó (presidente, vocal 1 y
+        /// vocal 2).
         /// </summary>
         private IQueryable<Examene> ExamenesVisiblesEnCalendario()
         {
+            int lugaresDelTribunal = RolesMesa.Todos.Length;
             return _context.Examenes.Where(e =>
                 !_context.MesasExamenes.Any(m => m.IdExamen == e.IdExamen) ||
-                _context.MesasExamenes.Any(m => m.IdExamen == e.IdExamen && m.EstadoConfirmacion == MesaAceptada));
+                _context.MesasExamenes
+                    .Where(m => m.IdExamen == e.IdExamen && m.EstadoConfirmacion == MesaAceptada)
+                    .Select(m => m.Rol)
+                    .Distinct()
+                    .Count() == lugaresDelTribunal);
         }
 
         /// <summary>
         /// Le avisa por mail al docente que lo convocaron a una mesa. Si el mail falla,
         /// la convocatoria igual queda registrada (el docente la ve en el sistema).
         /// </summary>
-        private async Task AvisarConvocatoriaAsync(int idDocente, int idExamen)
+        private async Task AvisarConvocatoriaAsync(int idDocente, int idExamen, string rol)
         {
             try
             {
@@ -74,7 +80,7 @@ namespace AutoGestionAPI.Controllers
                     .Select(d => d.IdUsuarioNavigation)
                     .FirstAsync();
 
-                await _emailService.EnviarAvisoMesaExamenAsync(usuario.Email, usuario.Nombre ?? "Docente", datos.Materia, datos.Fecha);
+                await _emailService.EnviarAvisoMesaExamenAsync(usuario.Email, usuario.Nombre ?? "Docente", datos.Materia, datos.Fecha, rol);
             }
             catch (Exception ex)
             {
@@ -486,16 +492,46 @@ namespace AutoGestionAPI.Controllers
             if (examen == null)
                 return NotFound(new { message = "No se encontró la mesa de examen." });
 
-            if (!await _context.Docentes.AnyAsync(d => d.IdDocente == dto.IdDocente))
-                return BadRequest(new { message = "El docente seleccionado no existe." });
+            if (!await _context.Docentes.AnyAsync(d => d.IdDocente == dto.IdDocente && d.IdUsuarioNavigation.EstadoUsuario))
+                return BadRequest(new { message = "El docente seleccionado no existe o está dado de baja." });
 
             // 1. Verificamos que no exista ya una asignación para este examen y este docente
+            //    (tampoco se puede volver a convocar a uno que ya rechazó esta mesa)
             bool asignacionExiste = await _context.MesasExamenes
                 .AnyAsync(m => m.IdExamen == dto.IdExamen && m.IdDocente == dto.IdDocente);
 
             if (asignacionExiste)
             {
-                return BadRequest(new { message = "El docente ya se encuentra asignado a esta mesa de examen." });
+                return BadRequest(new { message = "El docente ya fue convocado a esta mesa de examen." });
+            }
+
+            // 2. Qué lugar del tribunal se cubre. Un lugar está libre si nadie lo tiene
+            //    pendiente ni aceptado (por ejemplo, porque su docente lo rechazó).
+            List<string> rolesOcupados = await _context.MesasExamenes
+                .Where(m => m.IdExamen == dto.IdExamen
+                    && (m.EstadoConfirmacion == MesaPendiente || m.EstadoConfirmacion == MesaAceptada))
+                .Select(m => m.Rol)
+                .ToListAsync();
+            List<string> rolesLibres = RolesMesa.Todos.Except(rolesOcupados).ToList();
+
+            string? rol = RolesMesa.Normalizar(dto.Rol);
+            if (!string.IsNullOrWhiteSpace(dto.Rol) && rol == null)
+                return BadRequest(new { message = $"El rol no es válido. Opciones: {string.Join(", ", RolesMesa.Todos)}." });
+
+            if (rol == null)
+            {
+                if (rolesLibres.Count != 1)
+                    return BadRequest(new
+                    {
+                        message = rolesLibres.Count == 0
+                            ? "El tribunal de esta mesa ya está completo."
+                            : $"Indicá qué lugar del tribunal se cubre: {string.Join(", ", rolesLibres)}."
+                    });
+                rol = rolesLibres[0];
+            }
+            else if (!rolesLibres.Contains(rol))
+            {
+                return BadRequest(new { message = $"El lugar de {rol} ya está cubierto en esta mesa." });
             }
 
             // Si la mesa había quedado libre (todos rechazaron), al reasignarla vuelve
@@ -506,33 +542,49 @@ namespace AutoGestionAPI.Controllers
                 return BadRequest(new { message = "No se puede reasignar la mesa: ese año y comisión ya tienen el máximo de exámenes permitido para ese día." });
             }
 
-            // 2. Creamos la asignación
-            MesaExamen nuevaAsignacion = new MesaExamen // Ajuste el nombre exacto de su clase si es singular o plural
+            // 3. Creamos la asignación
+            MesaExamen nuevaAsignacion = new MesaExamen
             {
                 IdExamen = dto.IdExamen,
                 IdDocente = dto.IdDocente,
-                EstadoConfirmacion = "Pendiente" // Estado inicial automático
+                Rol = rol,
+                EstadoConfirmacion = MesaPendiente // Estado inicial automático
             };
 
             _context.MesasExamenes.Add(nuevaAsignacion);
             await _context.SaveChangesAsync();
 
-            await AvisarConvocatoriaAsync(dto.IdDocente, dto.IdExamen);
+            await AvisarConvocatoriaAsync(dto.IdDocente, dto.IdExamen, rol);
 
-            return Ok(new { message = "Docente asignado correctamente. Se ha notificado al profesor." });
+            return Ok(new { message = $"Docente convocado como {rol}. Se le envió el aviso.", rol });
         }
 
-        //Endpoint para crear mesa de examen y asignar al presidente de mesa.
+        // Alta de una mesa de examen con su tribunal completo (presidente y dos vocales)
 
         [HttpPost("registrar-mesa")]
         [Authorize(Roles = "Director,Secretario")]
         public async Task<IActionResult> RegistrarMesa([FromBody] RegistrarMesaDto dto)
         {
-
-            bool docenteExiste = await _context.Docentes.AnyAsync(d => d.IdDocente == dto.IdDocente);
-            if (!docenteExiste)
+            // El tribunal son tres docentes distintos, uno por lugar
+            Dictionary<string, int> tribunal = new Dictionary<string, int>
             {
-                return BadRequest(new { message = "El docente seleccionado no existe." });
+                [RolesMesa.Presidente] = dto.IdPresidente,
+                [RolesMesa.Vocal1] = dto.IdVocal1,
+                [RolesMesa.Vocal2] = dto.IdVocal2,
+            };
+
+            if (tribunal.Values.Any(id => id <= 0))
+                return BadRequest(new { message = "Hay que indicar los tres docentes del tribunal: presidente, vocal 1 y vocal 2." });
+
+            if (tribunal.Values.Distinct().Count() != tribunal.Count)
+                return BadRequest(new { message = "Los tres docentes del tribunal tienen que ser distintos." });
+
+            List<int> idsDocentes = tribunal.Values.ToList();
+            int docentesValidos = await _context.Docentes
+                .CountAsync(d => idsDocentes.Contains(d.IdDocente) && d.IdUsuarioNavigation.EstadoUsuario);
+            if (docentesValidos != tribunal.Count)
+            {
+                return BadRequest(new { message = "Alguno de los docentes seleccionados no existe o está dado de baja." });
             }
 
             // La mesa también cuenta para el límite de exámenes por día
@@ -558,24 +610,28 @@ namespace AutoGestionAPI.Controllers
                 await _context.SaveChangesAsync();
 
 
-                MesaExamen asignacionDocente = new MesaExamen
+                // Paso B: convocamos a los tres integrantes del tribunal
+                foreach (KeyValuePair<string, int> lugar in tribunal)
                 {
-                    IdExamen = nuevaMesa.IdExamen,
-                    IdDocente = dto.IdDocente,
-                    EstadoConfirmacion = "Pendiente"
-                };
-
-                _context.MesasExamenes.Add(asignacionDocente);
+                    _context.MesasExamenes.Add(new MesaExamen
+                    {
+                        IdExamen = nuevaMesa.IdExamen,
+                        IdDocente = lugar.Value,
+                        Rol = lugar.Key,
+                        EstadoConfirmacion = MesaPendiente
+                    });
+                }
                 await _context.SaveChangesAsync();
 
-                // Confirmamos definitivamente ambos cambios en SQL Server
+                // Confirmamos definitivamente todos los cambios en SQL Server
                 await transaction.CommitAsync();
 
-                await AvisarConvocatoriaAsync(dto.IdDocente, nuevaMesa.IdExamen);
+                foreach (KeyValuePair<string, int> lugar in tribunal)
+                    await AvisarConvocatoriaAsync(lugar.Value, nuevaMesa.IdExamen, lugar.Key);
 
                 return Ok(new
                 {
-                    message = "Mesa de examen registrada exitosamente. Se ha enviado la notificación pendiente al docente.",
+                    message = "Mesa de examen registrada. Se envió el aviso a los tres docentes del tribunal; aparecerá en el calendario cuando los tres acepten.",
                     idExamen = nuevaMesa.IdExamen
                 });
             }
