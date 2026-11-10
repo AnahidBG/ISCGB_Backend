@@ -46,6 +46,12 @@ namespace AutoGestionAPI.Controllers
                     IdProvincia = u.IdProvincia,
                     FechaNac = u.FechaNac,
                     EstadoUsuario = u.EstadoUsuario,
+                    // Datos que carga el alta y que la pantalla de edición necesita mostrar
+                    Cuil = u.Cuil,
+                    Genero = u.Genero,
+                    AfiliacionEmergencia = u.AfiliacionEmergencia,
+                    EsDirectorSuplente = u.Docentes.Any(d => d.DirectorSuplente == true),
+                    Legajo = u.Alumnos.Select(a => a.Legajo).FirstOrDefault(),
                     Roles = u.UsuariosRoles.Select(ur => new
                     {
                         IdRol = ur.IdRol,
