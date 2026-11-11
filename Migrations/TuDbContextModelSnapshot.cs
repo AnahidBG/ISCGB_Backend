@@ -390,7 +390,7 @@ namespace AutoGestionAPI.Migrations
                         .HasColumnType("datetime")
                         .HasColumnName("fecha");
 
-                    b.Property<int>("IdComision")
+                    b.Property<int?>("IdComision")
                         .HasColumnType("int")
                         .HasColumnName("id_comision");
 
@@ -1511,7 +1511,6 @@ namespace AutoGestionAPI.Migrations
                     b.HasOne("AutoGestionAPI.Models.Comision", "IdComisionNavigation")
                         .WithMany("Examenes")
                         .HasForeignKey("IdComision")
-                        .IsRequired()
                         .HasConstraintName("FK_Examenes_Comision");
 
                     b.HasOne("AutoGestionAPI.Models.Docente", "IdDocenteCreadorNavigation")
