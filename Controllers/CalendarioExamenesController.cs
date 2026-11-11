@@ -282,7 +282,9 @@ namespace AutoGestionAPI.Controllers
         /// - Con solo <c>idMateria</c> (por ejemplo, al armar una mesa de examen, que es
         ///   del año entero), cuentan los exámenes de ese año, y el día figura lleno
         ///   si alguna de sus comisiones llegó al límite.
-        /// - Sin ellos, un día figura lleno si algún año + comisión llegó al límite.
+        /// - Sin ellos (el calendario general), un día nunca figura lleno: que un año
+        ///   y comisión llegue al límite no impide cargar a los demás grupos. Cada
+        ///   grupo lleno se ve en <c>porGrupo</c>.
         /// En todos los casos cada día trae el detalle en <c>porGrupo</c>. Una mesa de
         /// examen (sin comisión) cuenta en el grupo de cada comisión de su año.
         /// </summary>
@@ -354,7 +356,10 @@ namespace AutoGestionAPI.Controllers
                         // Exámenes distintos del día (una mesa cuenta una vez, aunque
                         // ocupe lugar en varias comisiones)
                         CantidadExamenes = dia.Select(l => l.IdExamen).Distinct().Count(),
-                        LimiteAlcanzado = porGrupo.Any(g => g.LimiteAlcanzado),
+                        // Solo se marca lleno al consultar un año (y comisión): sin
+                        // filtro, que un grupo llegue al límite no cierra el día
+                        // para los demás (el detalle queda en porGrupo)
+                        LimiteAlcanzado = idMateria.HasValue && porGrupo.Any(g => g.LimiteAlcanzado),
                         PorGrupo = porGrupo
                     };
                 });
