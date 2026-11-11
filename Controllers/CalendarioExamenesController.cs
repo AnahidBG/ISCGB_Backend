@@ -91,7 +91,7 @@ namespace AutoGestionAPI.Controllers
         /// <summary>
         /// Tipos de examen que un docente carga y puede modificar desde el calendario.
         /// </summary>
-        private static readonly string[] TiposQueGestionaElDocente = { "Parcial", "Recuperatorio", "Final" };
+        private static readonly string[] TiposQueGestionaElDocente = TiposExamen.DelDocente;
 
         /// <summary>
         /// Dirección/Secretaría pueden modificar o eliminar cualquier examen.
@@ -170,8 +170,15 @@ namespace AutoGestionAPI.Controllers
         /// El límite diario se aplica por GRUPO DE ALUMNOS: año (curso de la materia)
         /// + comisión. Ej.: con límite 2, un día puede tener 2 exámenes de Primer Año
         /// comisión A, 2 de Primer Año comisión B, 2 de Segundo Año comisión A, etc.
+        ///
+        /// Una mesa de examen no tiene comisión: es del año entero, así que ocupa un
+        /// lugar en CADA comisión de ese año. Por eso:
+        /// - Un examen de una comisión entra si esa comisión, contando las mesas del
+        ///   año, todavía tiene lugar.
+        /// - Una mesa (<paramref name="idComision"/> null) entra si TODAS las
+        ///   comisiones del año tienen lugar.
         /// </summary>
-        private async Task<bool> SuperaLimiteDiarioAsync(DateTime fechaDeseada, int idMateria, int idComision, int? idExamenIgnorar = null)
+        private async Task<bool> SuperaLimiteDiarioAsync(DateTime fechaDeseada, int idMateria, int? idComision, int? idExamenIgnorar = null)
         {
             // 1. Obtener el límite configurado (por defecto 2)
             ConfiguracionSistema? config = await _context.ConfiguracionesSistema.FirstOrDefaultAsync();
@@ -183,11 +190,10 @@ namespace AutoGestionAPI.Controllers
                 .Select(m => m.Curso)
                 .FirstOrDefaultAsync();
 
-            // 2. Contar cuántos exámenes de ese año y comisión ocupan esa fecha (ignorando
-            //    la hora). Incluye mesas pendientes y aceptadas; no las rechazadas.
+            // 2. Los exámenes de ese año que ocupan esa fecha (ignorando la hora).
+            //    Incluye mesas pendientes y aceptadas; no las rechazadas.
             IQueryable<Examene> query = ExamenesQueOcupanElDia()
                 .Where(e => e.Fecha.Date == fechaDeseada.Date
-                    && e.IdComision == idComision
                     && e.IdMateriaNavigation.Curso == curso);
 
             // Si estamos editando, ignoramos el examen actual
@@ -196,10 +202,19 @@ namespace AutoGestionAPI.Controllers
                 query = query.Where(e => e.IdExamen != idExamenIgnorar.Value);
             }
 
-            int examenesEnElDia = await query.CountAsync();
+            List<int?> comisionesDelDia = await query.Select(e => e.IdComision).ToListAsync();
+
+            // Las mesas del año (sin comisión) cuentan para todas las comisiones
+            int mesasDelAnio = comisionesDelDia.Count(c => c == null);
+
+            // La comisión más cargada que hay que respetar: la pedida, o (para una
+            // mesa) la que más exámenes tenga ese día
+            int examenesDeLaComision = idComision.HasValue
+                ? comisionesDelDia.Count(c => c == idComision.Value)
+                : comisionesDelDia.Where(c => c != null).GroupBy(c => c).Select(g => g.Count()).DefaultIfEmpty(0).Max();
 
             // 3. Retornar si agregar uno más superaría el límite diario
-            return (examenesEnElDia + 1) > limite;
+            return (mesasDelAnio + examenesDeLaComision + 1) > limite;
         }
 
         [HttpPost("registrar")]
@@ -264,8 +279,12 @@ namespace AutoGestionAPI.Controllers
         /// - Con <c>idMateria</c> e <c>idComision</c> (la materia y comisión que se
         ///   están por cargar), cada día informa la cantidad y si está lleno PARA ESE
         ///   año y comisión. Es lo que debería usar la pantalla de carga.
+        /// - Con solo <c>idMateria</c> (por ejemplo, al armar una mesa de examen, que es
+        ///   del año entero), cuentan los exámenes de ese año, y el día figura lleno
+        ///   si alguna de sus comisiones llegó al límite.
         /// - Sin ellos, un día figura lleno si algún año + comisión llegó al límite.
-        /// En ambos casos cada día trae el detalle en <c>porGrupo</c>.
+        /// En todos los casos cada día trae el detalle en <c>porGrupo</c>. Una mesa de
+        /// examen (sin comisión) cuenta en el grupo de cada comisión de su año.
         /// </summary>
         [HttpGet("estado-mes")]
         public async Task<IActionResult> ObtenerEstadoMes(int anio, int mes, [FromQuery] int? idMateria = null, [FromQuery] int? idComision = null)
@@ -282,37 +301,47 @@ namespace AutoGestionAPI.Controllers
                 .Where(e => e.Fecha >= fechaInicioMes && e.Fecha <= fechaFinMes)
                 .Select(e => new
                 {
+                    e.IdExamen,
                     e.Fecha,
                     Curso = e.IdMateriaNavigation.Curso,
-                    e.IdComision,
-                    Comision = e.IdComisionNavigation.Comision1
+                    e.IdComision
                 })
                 .ToListAsync();
 
-            // Si piden un año + comisión concreto, solo cuentan los exámenes de ese grupo
-            bool filtrarGrupo = idMateria.HasValue && idComision.HasValue;
-            string? cursoFiltro = null;
-            if (filtrarGrupo)
+            var comisiones = await _context.Comisions
+                .Select(c => new { c.IdComision, Comision = c.Comision1 })
+                .ToListAsync();
+
+            // Cada examen en el grupo (año + comisión) al que le ocupa lugar: un parcial
+            // en el de su comisión; una mesa (sin comisión), en todas las de su año
+            var lugaresOcupados = examenesDelMes
+                .SelectMany(e => comisiones
+                    .Where(c => e.IdComision == null || c.IdComision == e.IdComision)
+                    .Select(c => new { e.IdExamen, e.Fecha, e.Curso, c.IdComision, c.Comision }))
+                .ToList();
+
+            // Si piden un año (y comisión) concreto, solo cuentan los exámenes de ese grupo
+            if (idMateria.HasValue)
             {
-                cursoFiltro = await _context.Materias
-                    .Where(m => m.IdMateria == idMateria!.Value)
+                string? cursoFiltro = await _context.Materias
+                    .Where(m => m.IdMateria == idMateria.Value)
                     .Select(m => m.Curso)
                     .FirstOrDefaultAsync();
-                examenesDelMes = examenesDelMes
-                    .Where(e => e.IdComision == idComision!.Value && e.Curso == cursoFiltro)
+                lugaresOcupados = lugaresOcupados
+                    .Where(l => l.Curso == cursoFiltro && (!idComision.HasValue || l.IdComision == idComision.Value))
                     .ToList();
             }
 
-            var estadoPorDia = examenesDelMes
-                .GroupBy(e => e.Fecha.Date)
+            var estadoPorDia = lugaresOcupados
+                .GroupBy(l => l.Fecha.Date)
                 .Select(dia =>
                 {
                     var porGrupo = dia
-                        .GroupBy(e => new { e.Curso, e.IdComision, e.Comision })
+                        .GroupBy(l => new { l.Curso, l.IdComision, l.Comision })
                         .Select(g => new
                         {
                             Curso = g.Key.Curso,
-                            IdComision = g.Key.IdComision,
+                            IdComision = (int?)g.Key.IdComision,
                             Comision = g.Key.Comision,
                             CantidadExamenes = g.Count(),
                             LimiteAlcanzado = g.Count() >= limite
@@ -322,7 +351,9 @@ namespace AutoGestionAPI.Controllers
                     return new
                     {
                         Fecha = dia.Key,
-                        CantidadExamenes = dia.Count(),
+                        // Exámenes distintos del día (una mesa cuenta una vez, aunque
+                        // ocupe lugar en varias comisiones)
+                        CantidadExamenes = dia.Select(l => l.IdExamen).Distinct().Count(),
                         LimiteAlcanzado = porGrupo.Any(g => g.LimiteAlcanzado),
                         PorGrupo = porGrupo
                     };
@@ -353,7 +384,12 @@ namespace AutoGestionAPI.Controllers
 
             if (superaLimite)
             {
-                return BadRequest(new { message = "No se puede reprogramar: ese año y comisión ya tienen el máximo de exámenes permitido para ese día." });
+                return BadRequest(new
+                {
+                    message = examen.IdComision == null
+                        ? "No se puede reprogramar: alguna comisión de ese año ya tiene el máximo de exámenes permitido para ese día."
+                        : "No se puede reprogramar: ese año y comisión ya tienen el máximo de exámenes permitido para ese día."
+                });
             }
 
             // Si pasa la validación, actualizamos la fecha
@@ -464,8 +500,10 @@ namespace AutoGestionAPI.Controllers
                     Materia = e.IdMateriaNavigation.Nombre,
                     Fecha = e.Fecha,
 
-                    // Ajuste ".Nombre" por el campo exacto que tenga en sus clases (ej. .Descripcion, .NumeroComision, etc.)
-                    Comision = e.IdComisionNavigation.Comision1,
+                    // Las mesas de examen son de todas las comisiones del año
+                    Comision = e.IdComision == null
+                        ? TiposExamen.TodasLasComisiones
+                        : e.IdComisionNavigation!.Comision1,
                     TipoExamen = e.IdTipoExamenNavigation.TipoExamen,
                     PuedeModificar = esAdministrativo
                         || (idDocente != null
@@ -539,7 +577,12 @@ namespace AutoGestionAPI.Controllers
             bool yaOcupaElDia = await ExamenesQueOcupanElDia().AnyAsync(e => e.IdExamen == dto.IdExamen);
             if (!yaOcupaElDia && await SuperaLimiteDiarioAsync(examen.Fecha, examen.IdMateria, examen.IdComision, examen.IdExamen))
             {
-                return BadRequest(new { message = "No se puede reasignar la mesa: ese año y comisión ya tienen el máximo de exámenes permitido para ese día." });
+                return BadRequest(new
+                {
+                    message = examen.IdComision == null
+                        ? "No se puede reasignar la mesa: alguna comisión de ese año ya tiene el máximo de exámenes permitido para ese día."
+                        : "No se puede reasignar la mesa: ese año y comisión ya tienen el máximo de exámenes permitido para ese día."
+                });
             }
 
             // 3. Creamos la asignación
@@ -587,10 +630,23 @@ namespace AutoGestionAPI.Controllers
                 return BadRequest(new { message = "Alguno de los docentes seleccionados no existe o está dado de baja." });
             }
 
-            // La mesa también cuenta para el límite de exámenes por día
-            if (await SuperaLimiteDiarioAsync(dto.Fecha, dto.IdMateria, dto.IdComision))
+            if (!await _context.Materias.AnyAsync(m => m.IdMateria == dto.IdMateria))
+                return BadRequest(new { message = "La materia seleccionada no existe." });
+
+            // La mesa es para todas las comisiones y siempre con el tipo "Mesa de Examen"
+            // (lo que mande el front en IdComision e IdTipoExamen se ignora)
+            int? idTipoMesa = await _context.TipoExamen
+                .Where(t => t.TipoExamen == TiposExamen.MesaDeExamen)
+                .Select(t => (int?)t.IdTipoExamen)
+                .FirstOrDefaultAsync();
+            if (idTipoMesa == null)
+                return StatusCode(500, new { message = "Falta el tipo de examen \"Mesa de Examen\". Reiniciá la API para que se cargue." });
+
+            // La mesa también cuenta para el límite de exámenes por día, en todas las
+            // comisiones de ese año
+            if (await SuperaLimiteDiarioAsync(dto.Fecha, dto.IdMateria, idComision: null))
             {
-                return BadRequest(new { message = "No se puede registrar la mesa: ese año y comisión ya tienen el máximo de exámenes permitido para ese día." });
+                return BadRequest(new { message = "No se puede registrar la mesa: alguna comisión de ese año ya tiene el máximo de exámenes permitido para ese día." });
             }
 
             using IDbContextTransaction transaction = await _context.Database.BeginTransactionAsync();
@@ -602,8 +658,8 @@ namespace AutoGestionAPI.Controllers
                 {
                     Fecha = dto.Fecha,
                     IdMateria = dto.IdMateria,
-                    IdComision = dto.IdComision,
-                    IdTipoExamen = dto.IdTipoExamen
+                    IdComision = null,
+                    IdTipoExamen = idTipoMesa.Value
                 };
 
                 _context.Examenes.Add(nuevaMesa);

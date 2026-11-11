@@ -74,8 +74,9 @@ namespace AutoGestionAPI.Data
 
             // Tipos de examen del calendario. Están definidos en el modelo (HasData),
             // pero en algunas bases quedaron vacíos y sin ellos no se puede registrar
-            // ningún examen. Se agregan los que falten, en este orden (ids 1, 2 y 3).
-            foreach (string tipo in new[] { "Parcial", "Recuperatorio", "Final" })
+            // ningún examen. Se agregan los que falten, en este orden (ids 1, 2 y 3),
+            // más "Mesa de Examen", el de las mesas que registra Dirección/Secretaría.
+            foreach (string tipo in TiposExamen.Todos)
             {
                 if (!await context.TipoExamen.AnyAsync(t => t.TipoExamen == tipo))
                 {

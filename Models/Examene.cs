@@ -9,7 +9,11 @@ public partial class Examene
 
     public int IdMateria { get; set; }
 
-    public int IdComision { get; set; }
+    /// <summary>
+    /// Comisión del examen. Es null en las mesas de examen, que son de la materia
+    /// para todas sus comisiones (ver <see cref="TiposExamen.MesaDeExamen"/>).
+    /// </summary>
+    public int? IdComision { get; set; }
 
     public int IdTipoExamen { get; set; }
 
@@ -24,7 +28,7 @@ public partial class Examene
 
     public virtual Docente? IdDocenteCreadorNavigation { get; set; }
 
-    public virtual Comision IdComisionNavigation { get; set; } = null!;
+    public virtual Comision? IdComisionNavigation { get; set; }
 
     public virtual Materia IdMateriaNavigation { get; set; } = null!;
 
