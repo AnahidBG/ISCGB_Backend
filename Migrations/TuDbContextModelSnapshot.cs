@@ -324,6 +324,10 @@ namespace AutoGestionAPI.Migrations
                         .HasColumnType("int")
                         .HasColumnName("id_docente");
 
+                    b.Property<int?>("IdDocenteTitular")
+                        .HasColumnType("int")
+                        .HasColumnName("id_docente_titular");
+
                     b.Property<int>("IdMateria")
                         .HasColumnType("int")
                         .HasColumnName("id_materia");
@@ -334,6 +338,8 @@ namespace AutoGestionAPI.Migrations
                     b.HasIndex("IdComision");
 
                     b.HasIndex("IdDocente");
+
+                    b.HasIndex("IdDocenteTitular");
 
                     b.HasIndex("IdMateria");
 
@@ -1474,6 +1480,11 @@ namespace AutoGestionAPI.Migrations
                         .IsRequired()
                         .HasConstraintName("FK_DocenteMateria_Docente");
 
+                    b.HasOne("AutoGestionAPI.Models.Docente", "IdDocenteTitularNavigation")
+                        .WithMany()
+                        .HasForeignKey("IdDocenteTitular")
+                        .HasConstraintName("FK_DocenteMateria_Titular");
+
                     b.HasOne("AutoGestionAPI.Models.Materia", "IdMateriaNavigation")
                         .WithMany("DocenteMateria")
                         .HasForeignKey("IdMateria")
@@ -1483,6 +1494,8 @@ namespace AutoGestionAPI.Migrations
                     b.Navigation("IdComisionNavigation");
 
                     b.Navigation("IdDocenteNavigation");
+
+                    b.Navigation("IdDocenteTitularNavigation");
 
                     b.Navigation("IdMateriaNavigation");
                 });

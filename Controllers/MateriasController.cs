@@ -59,13 +59,19 @@ namespace AutoGestionAPI.Controllers
         [HttpGet("materias-disponibles")]
         public async Task<IActionResult> ObtenerMaterias()
         {
+            // Con el año (curso) para distinguirlas en los desplegables de asignación.
+            // Ordenadas por año ("Primer", "Segundo", "Tercer" ya quedan en orden
+            // alfabético) y después por nombre; las que no tienen año, al final.
             var materias = await _context.Materias
+                .OrderBy(m => m.Curso == null)
+                .ThenBy(m => m.Curso)
+                .ThenBy(m => m.Nombre)
                 .Select(m => new
                 {
                     IdMateria = m.IdMateria,
-                    NombreMateria = m.Nombre
+                    NombreMateria = m.Nombre,
+                    Curso = m.Curso
                 })
-                .OrderBy(m => m.NombreMateria)
                 .ToListAsync();
 
             return Ok(new { data = materias });
@@ -115,6 +121,27 @@ namespace AutoGestionAPI.Controllers
             if (asignacionExiste)
             {
                 return BadRequest(new { message = "El docente ya tiene asignada esta materia en esta comisión." });
+            }
+
+            // Una materia tiene un solo docente (en todas sus comisiones). El mismo
+            // docente sí puede tenerla en varias comisiones. Durante una suplencia la
+            // materia figura a nombre del suplente.
+            var otroDocente = await _context.DocenteMateria
+                .Where(dm => dm.IdMateria == dto.IdMateria && dm.IdDocente != dto.IdDocente)
+                .Select(dm => new
+                {
+                    dm.IdDocenteNavigation.IdUsuarioNavigation.Nombre,
+                    dm.IdDocenteNavigation.IdUsuarioNavigation.Apellido,
+                    Materia = dm.IdMateriaNavigation.Nombre
+                })
+                .FirstOrDefaultAsync();
+
+            if (otroDocente != null)
+            {
+                return BadRequest(new
+                {
+                    message = $"La materia {otroDocente.Materia} ya está asignada a {otroDocente.Nombre} {otroDocente.Apellido}. Una materia tiene un solo docente."
+                });
             }
 
             DocenteMaterium nuevaAsignacion = new DocenteMaterium

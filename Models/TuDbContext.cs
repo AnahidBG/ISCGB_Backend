@@ -266,6 +266,12 @@ public partial class TuDbContext : DbContext
                 .HasForeignKey(d => d.IdMateria)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_DocenteMateria_Materia");
+
+            entity.Property(e => e.IdDocenteTitular).HasColumnName("id_docente_titular");
+            entity.HasOne(d => d.IdDocenteTitularNavigation).WithMany()
+                .HasForeignKey(d => d.IdDocenteTitular)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_DocenteMateria_Titular");
         });
 
         modelBuilder.Entity<DocenteTipoTitulo>(entity =>
