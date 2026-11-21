@@ -81,8 +81,12 @@ namespace AutoGestionAPI.Controllers
         [Authorize(Roles = "Director,Secretario")]
         public async Task<IActionResult> ObtenerDocentes()
         {
+            // Solo usuarios activos con el rol Docente: un usuario que tiene fila en
+            // Docentes pero perdió el rol (o fue dado de baja) no puede ver ni
+            // aceptar mesas, así que no se lo ofrece
             var docentes = await _context.Docentes
-                .Include(d => d.IdUsuarioNavigation)
+                .Where(d => d.IdUsuarioNavigation.EstadoUsuario
+                    && d.IdUsuarioNavigation.UsuariosRoles.Any(r => r.IdRolNavigation.Rol == "Docente"))
                 .Select(d => new
                 {
                     IdDocente = d.IdDocente,

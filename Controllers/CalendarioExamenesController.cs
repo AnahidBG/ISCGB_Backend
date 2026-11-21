@@ -47,6 +47,18 @@ namespace AutoGestionAPI.Controllers
         }
 
         /// <summary>
+        /// Docentes que pueden integrar un tribunal: usuario activo y con el rol
+        /// Docente. Sin ese rol no pueden ver ni aceptar la convocatoria (esos
+        /// endpoints piden el rol), y la mesa quedaría trabada para siempre.
+        /// </summary>
+        private IQueryable<Docente> DocentesHabilitadosParaMesas()
+        {
+            return _context.Docentes.Where(d =>
+                d.IdUsuarioNavigation.EstadoUsuario
+                && d.IdUsuarioNavigation.UsuariosRoles.Any(r => r.IdRolNavigation.Rol == "Docente"));
+        }
+
+        /// <summary>
         /// Exámenes que se MUESTRAN en el calendario: los que cargan los docentes, y
         /// las mesas recién cuando el tribunal completo aceptó (presidente, vocal 1 y
         /// vocal 2).
@@ -97,7 +109,7 @@ namespace AutoGestionAPI.Controllers
         /// Dirección/Secretaría pueden modificar o eliminar cualquier examen.
         /// Un docente, solo los que cargó él mismo y que sean Parcial, Recuperatorio
         /// o Final (no las mesas que registra Dirección/Secretaría).
-        /// Con <paramref name="incluirSuplente"/> (cambiar la fecha), también el
+        /// Con <paramref name="incluirSuplente"/> (cambiar la fecha o eliminar), también el
         /// suplente con los que cargó el titular al que reemplaza, de esa materia y
         /// comisión.
         /// </summary>
@@ -429,7 +441,8 @@ namespace AutoGestionAPI.Controllers
                 return NotFound(new { message = "No se encontró el examen especificado." });
             }
 
-            if (!await PuedeGestionarExamenAsync(examen))
+            // El suplente también puede eliminar los exámenes de su titular
+            if (!await PuedeGestionarExamenAsync(examen, incluirSuplente: true))
                 return Forbid();
 
             // La base no borra en cascada los docentes asignados a la mesa: si no se
@@ -497,12 +510,22 @@ namespace AutoGestionAPI.Controllers
             return Ok(materiasAsignadas);
         }
 
+        /// <summary>
+        /// Los exámenes que se muestran en el calendario para un mes. Con
+        /// <c>anio</c> y <c>mes</c> devuelve ese mes; sin ellos, el mes en curso
+        /// (como antes, para no romper al front que todavía no los manda).
+        /// </summary>
         [HttpGet("del-mes")]
         [Authorize]
-        public async Task<ActionResult<IEnumerable<ExamenMesDto>>> ObtenerExamenesDelMes()
+        public async Task<ActionResult<IEnumerable<ExamenMesDto>>> ObtenerExamenesDelMes([FromQuery] int? anio = null, [FromQuery] int? mes = null)
         {
-            int mesActual = DateTime.Now.Month;
-            int anioActual = DateTime.Now.Year;
+            if (mes.HasValue && (mes < 1 || mes > 12))
+                return BadRequest(new { message = "El mes tiene que estar entre 1 y 12." });
+            if (anio.HasValue && (anio < 2000 || anio > 2100))
+                return BadRequest(new { message = "El año no es válido." });
+
+            int mesActual = mes ?? DateTime.Now.Month;
+            int anioActual = anio ?? DateTime.Now.Year;
 
             bool esAdministrativo = User.EsAdministrativo();
             int? idDocente = await ObtenerIdDocenteActualAsync();
@@ -557,8 +580,8 @@ namespace AutoGestionAPI.Controllers
             if (examen == null)
                 return NotFound(new { message = "No se encontró la mesa de examen." });
 
-            if (!await _context.Docentes.AnyAsync(d => d.IdDocente == dto.IdDocente && d.IdUsuarioNavigation.EstadoUsuario))
-                return BadRequest(new { message = "El docente seleccionado no existe o está dado de baja." });
+            if (!await DocentesHabilitadosParaMesas().AnyAsync(d => d.IdDocente == dto.IdDocente))
+                return BadRequest(new { message = "El docente seleccionado no existe, está dado de baja o no tiene el rol Docente." });
 
             // 1. Verificamos que no exista ya una asignación para este examen y este docente
             //    (tampoco se puede volver a convocar a uno que ya rechazó esta mesa)
@@ -650,11 +673,11 @@ namespace AutoGestionAPI.Controllers
                 return BadRequest(new { message = "Los tres docentes del tribunal tienen que ser distintos." });
 
             List<int> idsDocentes = tribunal.Values.ToList();
-            int docentesValidos = await _context.Docentes
-                .CountAsync(d => idsDocentes.Contains(d.IdDocente) && d.IdUsuarioNavigation.EstadoUsuario);
+            int docentesValidos = await DocentesHabilitadosParaMesas()
+                .CountAsync(d => idsDocentes.Contains(d.IdDocente));
             if (docentesValidos != tribunal.Count)
             {
-                return BadRequest(new { message = "Alguno de los docentes seleccionados no existe o está dado de baja." });
+                return BadRequest(new { message = "Alguno de los docentes seleccionados no existe, está dado de baja o no tiene el rol Docente." });
             }
 
             if (!await _context.Materias.AnyAsync(m => m.IdMateria == dto.IdMateria))
