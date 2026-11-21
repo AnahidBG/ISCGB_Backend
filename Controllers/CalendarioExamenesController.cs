@@ -97,13 +97,26 @@ namespace AutoGestionAPI.Controllers
         /// Dirección/Secretaría pueden modificar o eliminar cualquier examen.
         /// Un docente, solo los que cargó él mismo y que sean Parcial, Recuperatorio
         /// o Final (no las mesas que registra Dirección/Secretaría).
+        /// Con <paramref name="incluirSuplente"/> (cambiar la fecha), también el
+        /// suplente con los que cargó el titular al que reemplaza, de esa materia y
+        /// comisión.
         /// </summary>
-        private async Task<bool> PuedeGestionarExamenAsync(Examene examen)
+        private async Task<bool> PuedeGestionarExamenAsync(Examene examen, bool incluirSuplente = false)
         {
             if (User.EsAdministrativo()) return true;
 
             int? idDocente = await ObtenerIdDocenteActualAsync();
-            if (idDocente == null || examen.IdDocenteCreador != idDocente) return false;
+            if (idDocente == null) return false;
+
+            bool esSuyo = examen.IdDocenteCreador == idDocente;
+            bool esDeSuTitular = incluirSuplente
+                && examen.IdDocenteCreador != null
+                && await _context.DocenteMateria.AnyAsync(dm =>
+                    dm.IdDocente == idDocente.Value
+                    && dm.IdDocenteTitular == examen.IdDocenteCreador
+                    && dm.IdMateria == examen.IdMateria
+                    && dm.IdComision == examen.IdComision);
+            if (!esSuyo && !esDeSuTitular) return false;
 
             string? tipo = await _context.TipoExamen
                 .Where(t => t.IdTipoExamen == examen.IdTipoExamen)
@@ -380,7 +393,8 @@ namespace AutoGestionAPI.Controllers
                 return NotFound(new { message = "No se encontró el examen especificado." });
             }
 
-            if (!await PuedeGestionarExamenAsync(examen))
+            // El suplente también puede cambiar la fecha de los exámenes de su titular
+            if (!await PuedeGestionarExamenAsync(examen, incluirSuplente: true))
                 return Forbid();
 
             // Validamos la regla de negocio, pasándole el ID del examen actual 
@@ -510,10 +524,18 @@ namespace AutoGestionAPI.Controllers
                         ? TiposExamen.TodasLasComisiones
                         : e.IdComisionNavigation!.Comision1,
                     TipoExamen = e.IdTipoExamenNavigation.TipoExamen,
+                    // Docente: los suyos, o (como suplente) los de su titular en esa
+                    // materia y comisión
                     PuedeModificar = esAdministrativo
                         || (idDocente != null
-                            && e.IdDocenteCreador == idDocente
-                            && TiposQueGestionaElDocente.Contains(e.IdTipoExamenNavigation.TipoExamen))
+                            && TiposQueGestionaElDocente.Contains(e.IdTipoExamenNavigation.TipoExamen)
+                            && (e.IdDocenteCreador == idDocente
+                                || (e.IdDocenteCreador != null
+                                    && _context.DocenteMateria.Any(dm =>
+                                        dm.IdDocente == idDocente
+                                        && dm.IdDocenteTitular == e.IdDocenteCreador
+                                        && dm.IdMateria == e.IdMateria
+                                        && dm.IdComision == e.IdComision))))
                 })
                 .OrderBy(e => e.Fecha)
                 .ToListAsync();

@@ -32,10 +32,36 @@ namespace AutoGestionAPI.Controllers
             if (docente == null)
                 return NotFound(new { message = "No se encontró el registro del docente." });
 
+            // El titular al que reemplaza (si se indicó): tiene que ser otro docente
+            if (dto.EsSuplente && dto.IdDocenteTitular.HasValue)
+            {
+                if (dto.IdDocenteTitular.Value == idDocente)
+                    return BadRequest(new { message = "Un docente no puede ser suplente de sí mismo." });
+
+                if (!await _context.Docentes.AnyAsync(d => d.IdDocente == dto.IdDocenteTitular.Value))
+                    return BadRequest(new { message = "No se encontró al docente titular indicado." });
+            }
+
             docente.EsSuplente = dto.EsSuplente;
+            int materiasMovidas = 0;
 
             if (dto.EsSuplente)
             {
+                // Las materias del titular pasan al suplente; se anota de quién eran
+                // para devolvérselas al terminar la suplencia
+                if (dto.IdDocenteTitular.HasValue)
+                {
+                    List<DocenteMaterium> delTitular = await _context.DocenteMateria
+                        .Where(dm => dm.IdDocente == dto.IdDocenteTitular.Value && dm.IdDocenteTitular == null)
+                        .ToListAsync();
+                    foreach (DocenteMaterium asignacion in delTitular)
+                    {
+                        asignacion.IdDocente = idDocente;
+                        asignacion.IdDocenteTitular = dto.IdDocenteTitular.Value;
+                    }
+                    materiasMovidas = delTitular.Count;
+                }
+
                 docente.FechaInicioSuplencia = dto.FechaInicio ?? DateTime.Now;
                 docente.FechaFinSuplencia = dto.FechaFin;
 
@@ -54,6 +80,16 @@ namespace AutoGestionAPI.Controllers
 
             else
             {
+                // Las materias que tenía como suplente vuelven a su titular
+                List<DocenteMaterium> prestadas = await _context.DocenteMateria
+                    .Where(dm => dm.IdDocente == idDocente && dm.IdDocenteTitular != null)
+                    .ToListAsync();
+                foreach (DocenteMaterium asignacion in prestadas)
+                {
+                    asignacion.IdDocente = asignacion.IdDocenteTitular!.Value;
+                    asignacion.IdDocenteTitular = null;
+                }
+                materiasMovidas = prestadas.Count;
 
                 if (docente.FechaFinSuplencia == null && docente.FechaInicioSuplencia != null)
                 {
@@ -82,8 +118,11 @@ namespace AutoGestionAPI.Controllers
 
             return Ok(new
             {
-                message = dto.EsSuplente ? "Suplencia y permisos activados." : "Baja procesada y accesos revocados correctamente.",
+                message = dto.EsSuplente
+                    ? "Suplencia y permisos activados." + (materiasMovidas > 0 ? $" Tomó {materiasMovidas} asignación(es) de materia del titular." : "")
+                    : "Baja procesada y accesos revocados correctamente." + (materiasMovidas > 0 ? $" {materiasMovidas} asignación(es) de materia volvieron a su titular." : ""),
                 esSuplente = docente.EsSuplente,
+                materiasMovidas,
                 estadoUsuario = docente.IdUsuarioNavigation.EstadoUsuario
             });
         }
