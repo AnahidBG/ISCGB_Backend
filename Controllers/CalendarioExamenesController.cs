@@ -97,7 +97,7 @@ namespace AutoGestionAPI.Controllers
         /// Dirección/Secretaría pueden modificar o eliminar cualquier examen.
         /// Un docente, solo los que cargó él mismo y que sean Parcial, Recuperatorio
         /// o Final (no las mesas que registra Dirección/Secretaría).
-        /// Con <paramref name="incluirSuplente"/> (cambiar la fecha), también el
+        /// Con <paramref name="incluirSuplente"/> (cambiar la fecha o eliminar), también el
         /// suplente con los que cargó el titular al que reemplaza, de esa materia y
         /// comisión.
         /// </summary>
@@ -429,7 +429,8 @@ namespace AutoGestionAPI.Controllers
                 return NotFound(new { message = "No se encontró el examen especificado." });
             }
 
-            if (!await PuedeGestionarExamenAsync(examen))
+            // El suplente también puede eliminar los exámenes de su titular
+            if (!await PuedeGestionarExamenAsync(examen, incluirSuplente: true))
                 return Forbid();
 
             // La base no borra en cascada los docentes asignados a la mesa: si no se
